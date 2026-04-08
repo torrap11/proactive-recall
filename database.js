@@ -61,19 +61,32 @@ function getDb() {
 }
 
 function _migrate() {
-  // Future: add new columns here with IF NOT EXISTS checks
+  const cols = getDb().pragma('table_info(notes)').map(c => c.name);
+  if (!cols.includes('deleted_at')) {
+    getDb().exec('ALTER TABLE notes ADD COLUMN deleted_at TEXT');
+  }
 }
 
 // ── Notes CRUD ────────────────────────────────────────────────────────────────
 
 function getAllNotes(folderId) {
+  if (folderId === 'trash') {
+    return getDb()
+      .prepare('SELECT * FROM notes WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC')
+      .all();
+  }
+  const active = 'deleted_at IS NULL';
   if (folderId === undefined || folderId === 'all') {
-    return getDb().prepare('SELECT * FROM notes ORDER BY updated_at DESC').all();
+    return getDb().prepare(`SELECT * FROM notes WHERE ${active} ORDER BY updated_at DESC`).all();
   }
   if (folderId === null || folderId === 'unfiled') {
-    return getDb().prepare('SELECT * FROM notes WHERE folder_id IS NULL ORDER BY updated_at DESC').all();
+    return getDb()
+      .prepare(`SELECT * FROM notes WHERE folder_id IS NULL AND ${active} ORDER BY updated_at DESC`)
+      .all();
   }
-  return getDb().prepare('SELECT * FROM notes WHERE folder_id = ? ORDER BY updated_at DESC').all(folderId);
+  return getDb()
+    .prepare(`SELECT * FROM notes WHERE folder_id = ? AND ${active} ORDER BY updated_at DESC`)
+    .all(folderId);
 }
 
 function getNoteById(id) {
@@ -84,7 +97,8 @@ function searchNotes(query) {
   const q = `%${(query || '').toLowerCase()}%`;
   return getDb()
     .prepare(`SELECT * FROM notes
-              WHERE lower(title) LIKE ? OR lower(content) LIKE ?
+              WHERE deleted_at IS NULL
+                AND (lower(title) LIKE ? OR lower(content) LIKE ?)
               ORDER BY updated_at DESC`)
     .all(q, q);
 }
@@ -108,8 +122,37 @@ function updateNote(id, { title, content } = {}) {
   return getNoteById(id);
 }
 
-function deleteNote(id) {
+/** Move note to Recently deleted (soft delete). */
+function moveNoteToTrash(id) {
+  const note = getNoteById(id);
+  if (!note || note.deleted_at) return false;
+  getDb()
+    .prepare("UPDATE notes SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?")
+    .run(id);
+  return true;
+}
+
+/** Restore from Recently deleted. */
+function restoreNote(id) {
+  const note = getNoteById(id);
+  if (!note || !note.deleted_at) return null;
+  getDb()
+    .prepare("UPDATE notes SET deleted_at = NULL, updated_at = datetime('now') WHERE id = ?")
+    .run(id);
+  return getNoteById(id);
+}
+
+/** Permanently remove (from trash only). */
+function permanentDeleteNote(id) {
+  const note = getNoteById(id);
+  if (!note || !note.deleted_at) return false;
   getDb().prepare('DELETE FROM notes WHERE id = ?').run(id);
+  return true;
+}
+
+/** @deprecated Use moveNoteToTrash — kept as alias for IPC/tools. */
+function deleteNote(id) {
+  return moveNoteToTrash(id);
 }
 
 function moveNoteToFolder(noteId, folderId) {
@@ -190,7 +233,7 @@ function getNotesByBundleId(bundleId) {
   return getDb()
     .prepare(`SELECT n.* FROM notes n
               JOIN note_app_links l ON l.note_id = n.id
-              WHERE l.bundle_id = ?
+              WHERE l.bundle_id = ? AND n.deleted_at IS NULL
               ORDER BY n.updated_at DESC`)
     .all(bundleId);
 }
@@ -202,7 +245,7 @@ function getNotesByAnyBundleId(bundleIds) {
   return getDb()
     .prepare(`SELECT DISTINCT n.* FROM notes n
               JOIN note_app_links l ON l.note_id = n.id
-              WHERE l.bundle_id IN (${placeholders})
+              WHERE l.bundle_id IN (${placeholders}) AND n.deleted_at IS NULL
               ORDER BY n.updated_at DESC`)
     .all(...bundleIds);
 }
@@ -229,13 +272,14 @@ function updateFolder(id, { name }) {
 }
 
 function deleteFolder(id) {
-  // Move notes to unfiled first
-  getDb().prepare("UPDATE notes SET folder_id = NULL, updated_at = datetime('now') WHERE folder_id = ?").run(id);
+  getDb()
+    .prepare("UPDATE notes SET folder_id = NULL, updated_at = datetime('now') WHERE folder_id = ? AND deleted_at IS NULL")
+    .run(id);
   getDb().prepare('DELETE FROM folders WHERE id = ?').run(id);
 }
 
 module.exports = {
-  getAllNotes, getNoteById, searchNotes, createNote, updateNote, deleteNote, moveNoteToFolder,
+  getAllNotes, getNoteById, searchNotes, createNote, updateNote, deleteNote, moveNoteToTrash, restoreNote, permanentDeleteNote, moveNoteToFolder,
   markNoteSurfaced, snoozeNoteSurface, disableNoteSurface, enableNoteSurface, noteEligibleForSurface,
   linkNoteToApp, unlinkNoteFromApp, getLinkedBundleIds, getNotesByBundleId, getNotesByAnyBundleId,
   getAllFolders, getFolderById, createFolder, updateFolder, deleteFolder,

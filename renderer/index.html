@@ -26,9 +26,13 @@
         <span class="folder-icon">📥</span>
         <span class="folder-name">Unfiled</span>
       </div>
+      <div class="folder-item" data-folder="trash">
+        <span class="folder-icon">🗑</span>
+        <span class="folder-name">Recently deleted</span>
+      </div>
       <div class="folder-section-label">Folders</div>
       <div id="folder-list"></div>
-      <button id="new-folder-btn">＋ New folder</button>
+      <button id="new-folder-btn" title="New folder (⌘⇧N)">＋ New folder</button>
     </div>
     <div id="sidebar-bottom">
       <button id="settings-btn">⚙ Settings</button>
@@ -51,18 +55,27 @@
 
   <!-- Editor -->
   <main id="editor-panel">
+    <div id="editor-panel-bar">
+      <span class="toolbar-sep"></span>
+      <button type="button" class="toolbar-btn" id="toggle-ai-btn" title="Toggle AI assistant (⌘⇧A)">✦ AI</button>
+    </div>
+    <div id="editor-body">
     <div id="editor-placeholder">
       <div class="ph-icon">📝</div>
       <div class="ph-text">Select or create a note</div>
-      <div class="ph-hint">⌘N — new note &nbsp;·&nbsp; ⌘⇧F — search &nbsp;·&nbsp; ⌘⇧A — AI assistant</div>
+      <div class="ph-hint">⌘N — new note &nbsp;·&nbsp; ⌘⇧N — new folder &nbsp;·&nbsp; ⌘⇧F — search &nbsp;·&nbsp; ⌘⇧A — AI &nbsp;·&nbsp; Esc — save &amp; close note &nbsp;·&nbsp; ↑↓ — list</div>
     </div>
 
     <div id="editor-content" style="display:none">
+      <div id="editor-trash-banner" class="hidden">
+        <span>Recently deleted</span>
+        <button type="button" class="toolbar-btn small" id="restore-note-btn">Restore</button>
+        <button type="button" class="toolbar-btn small danger" id="erase-note-btn">Delete forever…</button>
+      </div>
       <div id="editor-toolbar">
         <span id="note-status" style="font-size:11px;color:var(--text-faint)"></span>
         <span class="toolbar-sep"></span>
-        <button class="toolbar-btn" id="toggle-ai-btn" title="Toggle AI assistant (⌘⇧A)">✦ AI</button>
-        <button class="toolbar-btn" id="delete-note-btn" title="Delete note">🗑</button>
+        <button type="button" class="toolbar-btn" id="delete-note-btn" title="Move to Recently deleted">🗑</button>
       </div>
 
       <input id="note-title-input" type="text" placeholder="Note title…" autocomplete="off" spellcheck="false" />
@@ -76,16 +89,19 @@
         <div id="app-links-body"></div>
       </div>
     </div>
+    </div><!-- /#editor-body -->
   </main>
 
-  <!-- AI panel -->
-  <aside id="ai-panel" class="hidden">
+  <!-- AI panel (default open; use ✦ AI or ⌘⇧A to collapse) -->
+  <aside id="ai-panel">
     <div id="ai-header">
       <h2>✦ AI Assistant</h2>
       <button id="ai-close-btn" title="Close">×</button>
     </div>
     <div id="ai-messages">
-      <div class="ai-msg assistant">Hi! I can help you search, organize, and manage your notes. What would you like to do?</div>
+      <div class="ai-msg assistant">Hi! I can help you search, organize, and manage your notes. What would you like to do?
+
+Type /help for keyboard shortcuts.</div>
     </div>
     <div id="ai-input-row">
       <textarea id="ai-input" rows="1" placeholder="Ask anything about your notes…"></textarea>

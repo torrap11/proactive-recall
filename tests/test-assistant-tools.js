@@ -15,18 +15,39 @@ const assert   = require('node:assert/strict');
 
 function makeMockDb(overrides = {}) {
   const notes = [
-    { id: 1, title: 'Shopping list', content: 'eggs milk bread', folder_id: null, updated_at: '2024-01-01T00:00:00' },
-    { id: 2, title: 'Work tasks',    content: 'deploy feature x', folder_id: 1,  updated_at: '2024-01-02T00:00:00' },
+    { id: 1, title: 'Shopping list', content: 'eggs milk bread', folder_id: null, updated_at: '2024-01-01T00:00:00', deleted_at: null },
+    { id: 2, title: 'Work tasks',    content: 'deploy feature x', folder_id: 1,  updated_at: '2024-01-02T00:00:00', deleted_at: null },
   ];
   const folders = [{ id: 1, name: 'Work', created_at: '2024-01-01T00:00:00' }];
 
   return {
-    getAllNotes:        (folderId) => folderId === 1 ? notes.filter(n => n.folder_id === 1) : notes,
-    searchNotes:       (q)        => notes.filter(n => n.content.toLowerCase().includes(q.toLowerCase()) || n.title.toLowerCase().includes(q.toLowerCase())),
+    getAllNotes: (folderId) => {
+      const active = n => !n.deleted_at;
+      if (folderId === 'trash') return notes.filter(n => n.deleted_at);
+      if (folderId === null || folderId === 'unfiled') return notes.filter(n => n.folder_id == null && active(n));
+      if (folderId === 1) return notes.filter(n => n.folder_id === 1 && active(n));
+      if (folderId === 'all' || folderId === undefined) return notes.filter(active);
+      return notes.filter(active);
+    },
+    searchNotes: (q) =>
+      notes.filter(
+        n =>
+          !n.deleted_at &&
+          (n.content.toLowerCase().includes(q.toLowerCase()) || n.title.toLowerCase().includes(q.toLowerCase()))
+      ),
     getNoteById:       (id)       => notes.find(n => n.id === id) || null,
-    createNote:        (data)     => { const n = { id: 99, ...data, updated_at: new Date().toISOString(), created_at: new Date().toISOString() }; notes.push(n); return n; },
+    createNote:        (data)     => { const n = { id: 99, ...data, deleted_at: null, updated_at: new Date().toISOString(), created_at: new Date().toISOString() }; notes.push(n); return n; },
     updateNote:        (id, data) => { const n = notes.find(x => x.id === id); if (!n) return null; Object.assign(n, data); return n; },
-    deleteNote:        (id)       => { const i = notes.findIndex(n => n.id === id); if (i >= 0) notes.splice(i, 1); },
+    moveNoteToTrash: (id) => {
+      const n = notes.find(x => x.id === id);
+      if (!n || n.deleted_at) return false;
+      n.deleted_at = '2024-01-03T00:00:00';
+      return true;
+    },
+    deleteNote: (id) => {
+      const i = notes.findIndex(n => n.id === id);
+      if (i >= 0) notes.splice(i, 1);
+    },
     moveNoteToFolder:  (noteId, folderId) => { const n = notes.find(x => x.id === noteId); if (n) n.folder_id = folderId; return n; },
     getAllFolders:      ()         => folders,
     createFolder:      (data)     => { const f = { id: 99, ...data, created_at: new Date().toISOString() }; folders.push(f); return f; },
@@ -44,9 +65,10 @@ function makeMockDb(overrides = {}) {
 function executeTool(name, input, db) {
   switch (name) {
     case 'list_notes': {
-      const folderId = input.folder_id !== undefined ? input.folder_id : 'all';
-      const notes = db.getAllNotes(folderId);
-      return { count: notes.length, notes };
+      let folderId = input.folder_id !== undefined ? input.folder_id : 'all';
+      if (folderId === 'trash') folderId = 'trash';
+      const listed = db.getAllNotes(folderId);
+      return { count: listed.length, notes: listed };
     }
     case 'search_notes': {
       const notes = db.searchNotes(input.query || '');
@@ -66,8 +88,8 @@ function executeTool(name, input, db) {
       return note;
     }
     case 'delete_note': {
-      db.deleteNote(input.id);
-      return { deleted: input.id };
+      const ok = db.moveNoteToTrash(input.id);
+      return ok ? { moved_to_trash: input.id } : { error: `Note ${input.id} not found or already deleted.` };
     }
     case 'list_folders': {
       return db.getAllFolders();
@@ -152,12 +174,14 @@ test('update_note: updates title and content', () => {
   assert.equal(result.title, 'New title');
 });
 
-test('delete_note: removes note', () => {
+test('delete_note: moves note to trash', () => {
   const db = makeMockDb();
   const result = executeTool('delete_note', { id: 1 }, db);
-  assert.equal(result.deleted, 1);
-  const check = executeTool('get_note', { id: 1 }, db);
-  assert.ok(check.error);
+  assert.equal(result.moved_to_trash, 1);
+  const listed = executeTool('list_notes', {}, db);
+  assert.equal(listed.notes.find(n => n.id === 1), undefined);
+  const trash = executeTool('list_notes', { folder_id: 'trash' }, db);
+  assert.equal(trash.count, 1);
 });
 
 test('list_folders: returns all folders', () => {

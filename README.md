@@ -81,10 +81,15 @@ If you decline, notes and AI still work; proactive surfacing is silently disable
 | Shortcut | Action |
 |---|---|
 | `⌘N` | New note |
+| `⌘⇧N` | New folder (sidebar modal; also **Notes → New Folder**) |
 | `⌘⇧F` | Focus search |
-| `⌘⇧A` | Toggle AI assistant panel |
+| `⌘⇧A` | Toggle AI assistant panel (works from anywhere in the window; also under **Notes** in the menu bar) |
 | `⌘↵` | Send AI message |
-| `Escape` | Close modal / dismiss |
+| `↑` / `↓` | Move through the notes list (opens each note; disabled while focus is in the note body, search, or AI field) |
+| `Escape` | Close modal / dismiss; **when editing a note**, save and return to the list (selection stays on that note) |
+| `Delete` / `Backspace` | Move the selected note to **Recently deleted** (not while typing in the note title/body, search, or AI; disabled in Recently deleted) |
+
+**Recently deleted** — Sidebar → 🗑 Recently deleted. Restore a note from the banner buttons, or **Delete forever** to remove it permanently. The main **🗑** toolbar button moves active notes to Recently deleted (with confirmation); in Recently deleted it erases permanently (with confirmation).
 
 ---
 
@@ -115,7 +120,9 @@ Settings → **Proactive Surfacing** toggle switches the entire feature on or of
 
 ## AI assistant
 
-Click **✦ AI** in the toolbar or press `⌘⇧A` to open the chat panel.
+The chat panel is **open by default** so you can use it even when no note is selected. Click **✦ AI** in the top bar of the main column, press **`⌘⇧A`**, or use **Notes → Toggle AI Assistant** to show or hide it.
+
+In chat, send **`/help`** or **`/shortcuts`** to print keyboard shortcuts locally (no API key or network call).
 
 The assistant can:
 - Search and list your notes

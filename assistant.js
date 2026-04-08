@@ -35,7 +35,10 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        folder_id: { type: ['integer', 'null'], description: 'Folder ID to filter by. Omit for all notes, null for unfiled.' },
+        folder_id: {
+          type: ['integer', 'null', 'string'],
+          description: 'Folder ID to filter by. Omit for all active notes, null for unfiled. Use the string "trash" for Recently deleted.',
+        },
       },
     },
   },
@@ -89,7 +92,7 @@ const TOOLS = [
   },
   {
     name: 'delete_note',
-    description: 'Permanently delete a note.',
+    description: 'Move a note to Recently deleted (soft delete).',
     input_schema: {
       type: 'object',
       properties: {
@@ -198,7 +201,8 @@ function snippet(note) {
 function executeTool(name, input, db) {
   switch (name) {
     case 'list_notes': {
-      const folderId = input.folder_id !== undefined ? input.folder_id : 'all';
+      let folderId = input.folder_id !== undefined ? input.folder_id : 'all';
+      if (folderId === 'trash') folderId = 'trash';
       const notes = db.getAllNotes(folderId);
       return { count: notes.length, notes: notes.map(snippet) };
     }
@@ -222,8 +226,8 @@ function executeTool(name, input, db) {
       return note;
     }
     case 'delete_note': {
-      db.deleteNote(input.id);
-      return { deleted: input.id };
+      const ok = db.moveNoteToTrash(input.id);
+      return ok ? { moved_to_trash: input.id } : { error: `Note ${input.id} not found or already deleted.` };
     }
     case 'list_folders': {
       return db.getAllFolders();

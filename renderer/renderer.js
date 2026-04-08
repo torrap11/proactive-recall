@@ -22,16 +22,17 @@ function displayName(bid) { return BUNDLE_NAMES[bid] || bid; }
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let state = {
-  folders:       [],
-  notes:         [],
-  activeFolder:  'all',   // 'all' | 'unfiled' | <id>
-  activeNote:    null,    // note object
-  linkedApps:    [],      // bundle IDs for active note
-  searchQuery:   '',
-  aiMessages:    [],      // { role, content }[]
-  aiLoading:     false,
-  saveTimer:     null,
-  config:        {},
+  folders:           [],
+  notes:             [],
+  activeFolder:      'all',   // 'all' | 'unfiled' | 'trash' | <id>
+  activeNote:        null,    // note object
+  highlightedNoteId: null,    // list selection after closing editor (for Delete key)
+  linkedApps:        [],
+  searchQuery:       '',
+  aiMessages:        [],
+  aiLoading:         false,
+  saveTimer:         null,
+  config:            {},
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ async function init() {
   await loadNotes();
   bindEvents();
   applyConfig();
+  showAiPanel({ focusInput: false });
 }
 
 function applyConfig() {
@@ -101,6 +103,7 @@ async function loadNotes(query) {
 function folderTitle(f) {
   if (f === 'all')     return 'All Notes';
   if (f === 'unfiled') return 'Unfiled';
+  if (f === 'trash')   return 'Recently deleted';
   const folder = state.folders.find(x => x.id === f);
   return folder ? folder.name : 'Notes';
 }
@@ -128,9 +131,10 @@ function renderNoteList() {
   [...container.querySelectorAll('.note-item')].forEach(el => el.remove());
   notesEmpty.style.display = state.notes.length === 0 ? '' : 'none';
 
+  const focusId = state.activeNote?.id ?? state.highlightedNoteId;
   for (const note of state.notes) {
     const el = document.createElement('div');
-    el.className = 'note-item' + (state.activeNote?.id === note.id ? ' active' : '');
+    el.className = 'note-item' + (focusId === note.id ? ' active' : '');
     el.dataset.noteId = note.id;
     const snip = (note.content || '').slice(0, 80).replace(/\n/g, ' ');
     const date  = formatDate(note.updated_at);
@@ -161,7 +165,10 @@ function renderAiMessages() {
     appendAiMsg(msg.role, msg.content);
   }
   if (state.aiMessages.length === 0) {
-    appendAiMsg('assistant', 'Hi! I can help you search, organize, and manage your notes. What would you like to do?');
+    appendAiMsg(
+      'assistant',
+      'Hi! I can help you search, organize, and manage your notes. What would you like to do?\n\nType /help for keyboard shortcuts.'
+    );
   }
 }
 
@@ -177,15 +184,14 @@ function appendAiMsg(role, content) {
 async function selectNote(id) {
   const note = await window.api.getNote(id);
   if (!note) return;
-  state.activeNote = note;
-  state.linkedApps = note.linked_bundle_ids || [];
+  state.activeNote        = note;
+  state.highlightedNoteId = id;
+  state.linkedApps        = note.linked_bundle_ids || [];
 
-  // Update active state in list
   document.querySelectorAll('.note-item').forEach(el => {
     el.classList.toggle('active', Number(el.dataset.noteId) === id);
   });
 
-  // Show editor
   editorPlaceholder.style.display = 'none';
   editorContent.style.display     = 'flex';
   editorContent.style.flexDirection = 'column';
@@ -195,29 +201,140 @@ async function selectNote(id) {
   noteStatus.textContent = `Saved ${formatDate(note.updated_at)}`;
 
   renderAppLinks();
+  updateTrashEditorUi();
 }
 
 async function createNote() {
+  const folderForNew =
+    state.activeFolder === 'all' || state.activeFolder === 'unfiled' || state.activeFolder === 'trash'
+      ? null
+      : state.activeFolder;
   const note = await window.api.createNote({
     title:    'New Note',
     content:  '',
-    folderId: state.activeFolder === 'all' || state.activeFolder === 'unfiled'
-              ? null
-              : state.activeFolder,
+    folderId: folderForNew,
   });
   await loadNotes();
   selectNote(note.id);
 }
 
-async function deleteActiveNote() {
+function updateTrashEditorUi() {
+  const banner   = $('editor-trash-banner');
+  const appPanel = $('app-links-panel');
+  const delBtn   = $('delete-note-btn');
+  const trashed  = !!(state.activeNote && state.activeNote.deleted_at);
+  if (trashed) {
+    banner.classList.remove('hidden');
+    appPanel.style.display = 'none';
+    delBtn.title = 'Delete forever…';
+  } else {
+    banner.classList.add('hidden');
+    appPanel.style.display = '';
+    delBtn.title = 'Move to Recently deleted';
+  }
+}
+
+async function saveAndExitNote() {
   if (!state.activeNote) return;
-  if (!confirm(`Delete "${state.activeNote.title || 'Untitled'}"?`)) return;
-  await window.api.deleteNote(state.activeNote.id);
+  const id = state.activeNote.id;
+  clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  await saveActiveNote();
   state.activeNote = null;
   state.linkedApps = [];
+  state.highlightedNoteId = id;
   editorPlaceholder.style.display = '';
   editorContent.style.display     = 'none';
+  document.querySelectorAll('.note-item').forEach(el => {
+    el.classList.toggle('active', Number(el.dataset.noteId) === id);
+  });
   await loadNotes();
+}
+
+/** After removing `removedId` from `notesBefore`, which note should be selected (next row, else previous). */
+function neighborNoteIdAfterRemoval(notesBefore, removedId) {
+  const idx = notesBefore.findIndex(n => n.id === removedId);
+  if (idx < 0) return null;
+  if (idx < notesBefore.length - 1) return notesBefore[idx + 1].id;
+  if (idx > 0) return notesBefore[idx - 1].id;
+  return null;
+}
+
+async function focusNoteAfterListChange(nextId) {
+  if (nextId != null && state.notes.some(n => n.id === nextId)) {
+    await selectNote(nextId);
+    return;
+  }
+  state.highlightedNoteId = null;
+  document.querySelectorAll('.note-item').forEach(el => el.classList.remove('active'));
+}
+
+async function trashNoteById(id) {
+  const snap   = [...state.notes];
+  const nextId = neighborNoteIdAfterRemoval(snap, id);
+
+  await window.api.deleteNote(id);
+  if (state.activeNote?.id === id) {
+    state.activeNote = null;
+    state.linkedApps = [];
+    editorPlaceholder.style.display = '';
+    editorContent.style.display     = 'none';
+    $('editor-trash-banner').classList.add('hidden');
+    $('app-links-panel').style.display = '';
+  }
+  if (state.highlightedNoteId === id) state.highlightedNoteId = null;
+  await loadNotes();
+  await focusNoteAfterListChange(nextId);
+}
+
+async function deleteActiveNote() {
+  if (!state.activeNote) return;
+  if (state.activeNote.deleted_at) {
+    if (!confirm(`Permanently delete "${state.activeNote.title || 'Untitled'}"? This cannot be undone.`)) return;
+    const snap   = [...state.notes];
+    const rid    = state.activeNote.id;
+    const nextId = neighborNoteIdAfterRemoval(snap, rid);
+    await window.api.permanentDeleteNote(rid);
+    state.activeNote = null;
+    state.linkedApps = [];
+    if (state.highlightedNoteId === rid) state.highlightedNoteId = null;
+    editorPlaceholder.style.display = '';
+    editorContent.style.display     = 'none';
+    $('editor-trash-banner').classList.add('hidden');
+    $('app-links-panel').style.display = '';
+    await loadNotes();
+    await focusNoteAfterListChange(nextId);
+    return;
+  }
+  if (!confirm(`Move "${state.activeNote.title || 'Untitled'}" to Recently deleted?`)) return;
+  await trashNoteById(state.activeNote.id);
+}
+
+async function restoreActiveNote() {
+  if (!state.activeNote?.deleted_at) return;
+  const id = state.activeNote.id;
+  await window.api.restoreNote(id);
+  await switchFolder('all');
+  const refreshed = await window.api.getNote(id);
+  if (refreshed) await selectNote(id);
+}
+
+async function eraseActiveNoteForever() {
+  if (!state.activeNote?.deleted_at) return;
+  if (!confirm(`Permanently delete "${state.activeNote.title || 'Untitled'}"? This cannot be undone.`)) return;
+  const snap   = [...state.notes];
+  const rid    = state.activeNote.id;
+  const nextId = neighborNoteIdAfterRemoval(snap, rid);
+  await window.api.permanentDeleteNote(rid);
+  state.activeNote = null;
+  state.linkedApps = [];
+  if (state.highlightedNoteId === rid) state.highlightedNoteId = null;
+  editorPlaceholder.style.display = '';
+  editorContent.style.display     = 'none';
+  $('editor-trash-banner').classList.add('hidden');
+  $('app-links-panel').style.display = '';
+  await loadNotes();
+  await focusNoteAfterListChange(nextId);
 }
 
 function scheduleSave() {
@@ -243,6 +360,63 @@ async function saveActiveNote() {
   }
 }
 
+/** True when ↑/↓ should move the notes list selection (not e.g. caret in a textarea). */
+function shouldUseArrowNoteNav(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  const t = e.target;
+  if (t === noteContentInput) return false;
+  if (t === searchInput) return false;
+  if (t === aiInput) return false;
+  if (!addLinkModal.classList.contains('hidden')) return false;
+  if (!newFolderModal.classList.contains('hidden')) return false;
+  if (!settingsOverlay.classList.contains('hidden')) return false;
+  return true;
+}
+
+function shouldUseDeleteNoteKey(e) {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return false;
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  if (state.activeFolder === 'trash') return false;
+  const t = e.target;
+  if (t === noteContentInput || t === noteTitleInput) return false;
+  if (t === searchInput || t === aiInput) return false;
+  if (!addLinkModal.classList.contains('hidden')) return false;
+  if (!newFolderModal.classList.contains('hidden')) return false;
+  if (!settingsOverlay.classList.contains('hidden')) return false;
+  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return false;
+  const id = state.activeNote?.id ?? state.highlightedNoteId;
+  return id != null;
+}
+
+function getNoteListNavIndex() {
+  const items = [...notesList.querySelectorAll('.note-item')];
+  if (items.length === 0) return -1;
+  const focusId = state.activeNote?.id ?? state.highlightedNoteId;
+  const byActive = items.findIndex(el => el.classList.contains('active'));
+  if (byActive >= 0) return byActive;
+  if (focusId != null) {
+    const byId = items.findIndex(el => Number(el.dataset.noteId) === focusId);
+    if (byId >= 0) return byId;
+  }
+  return -1;
+}
+
+async function navigateNoteList(delta) {
+  const items = [...notesList.querySelectorAll('.note-item')];
+  if (items.length === 0) return;
+
+  let i = getNoteListNavIndex();
+  if (i < 0) {
+    i = delta > 0 ? 0 : items.length - 1;
+  } else {
+    i = Math.max(0, Math.min(items.length - 1, i + delta));
+  }
+
+  const id = Number(items[i].dataset.noteId);
+  await selectNote(id);
+  items[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 // ── Folder CRUD ───────────────────────────────────────────────────────────────
 async function createFolder(name) {
   if (!name.trim()) return;
@@ -256,6 +430,12 @@ async function deleteFolder(id) {
   await window.api.deleteFolder(id);
   if (state.activeFolder === id) await switchFolder('all');
   else await loadFolders();
+}
+
+function openNewFolderModal() {
+  $('new-folder-name').value = '';
+  newFolderModal.classList.remove('hidden');
+  $('new-folder-name').focus();
 }
 
 async function switchFolder(folder) {
@@ -307,16 +487,45 @@ function updateNoteLinkedBadge() {
 }
 
 // ── AI assistant ──────────────────────────────────────────────────────────────
-function showAiPanel() {
+function showAiPanel(opts) {
+  const focusInput = opts?.focusInput !== false;
   aiPanel.classList.remove('hidden');
   $('toggle-ai-btn').classList.add('active');
   renderAiMessages();
-  aiInput.focus();
+  if (focusInput) aiInput.focus();
 }
 
 function hideAiPanel() {
   aiPanel.classList.add('hidden');
   $('toggle-ai-btn').classList.remove('active');
+}
+
+let _lastAiToggleAt = 0;
+function toggleAiPanel() {
+  const now = Date.now();
+  if (now - _lastAiToggleAt < 80) return;
+  _lastAiToggleAt = now;
+  if (aiPanel.classList.contains('hidden')) showAiPanel();
+  else hideAiPanel();
+}
+
+const LOCAL_AI_HELP_REPLY =
+  'Keyboard shortcuts (macOS)\n\n' +
+  'Global\n' +
+  '• ⌘⇧P — Show / hide Proactive Recall\n\n' +
+  'In this window\n' +
+  '• ⌘N — New note\n' +
+  '• ⌘⇧N — New folder\n' +
+  '• ⌘⇧F — Focus search\n' +
+  '• ⌘⇧A — Toggle AI assistant (Notes menu too)\n' +
+  '• ⌘↵ — Send AI message\n' +
+  '• ↑ / ↓ — Move through the notes list (skipped in note body, search, or AI field)\n' +
+  '• Escape — Close modal; when editing a note, save and return to the list\n' +
+  '• Delete / Backspace — Move selected note to Recently deleted (not while typing in inputs; disabled in Recently deleted)';
+
+function isLocalAiSlashCommand(text) {
+  const t = text.trim().toLowerCase();
+  return t === '/help' || t === '/shortcuts';
 }
 
 async function sendAiMessage() {
@@ -327,6 +536,13 @@ async function sendAiMessage() {
   aiInput.value = '';
   aiInput.style.height = '';
   appendAiMsg('user', text);
+
+  if (isLocalAiSlashCommand(text)) {
+    state.aiMessages.push({ role: 'assistant', content: LOCAL_AI_HELP_REPLY });
+    appendAiMsg('assistant', LOCAL_AI_HELP_REPLY);
+    aiInput.focus();
+    return;
+  }
 
   state.aiLoading = true;
   aiSendBtn.disabled = true;
@@ -398,9 +614,14 @@ async function saveSettings() {
 
 // ── Event bindings ────────────────────────────────────────────────────────────
 function bindEvents() {
-  // Sidebar folder clicks
   document.querySelectorAll('.folder-item[data-folder]').forEach(el => {
-    el.addEventListener('click', () => switchFolder(el.dataset.folder === 'all' ? 'all' : el.dataset.folder === 'unfiled' ? 'unfiled' : Number(el.dataset.folder)));
+    el.addEventListener('click', () => {
+      const f = el.dataset.folder;
+      if (f === 'all') switchFolder('all');
+      else if (f === 'unfiled') switchFolder('unfiled');
+      else if (f === 'trash') switchFolder('trash');
+      else switchFolder(Number(f));
+    });
   });
 
   folderList.addEventListener('click', e => {
@@ -411,11 +632,7 @@ function bindEvents() {
   });
 
   // New folder
-  $('new-folder-btn').addEventListener('click', () => {
-    $('new-folder-name').value = '';
-    newFolderModal.classList.remove('hidden');
-    $('new-folder-name').focus();
-  });
+  $('new-folder-btn').addEventListener('click', () => openNewFolderModal());
   $('close-folder-modal-btn').addEventListener('click', () => newFolderModal.classList.add('hidden'));
   $('create-folder-confirm-btn').addEventListener('click', async () => {
     await createFolder($('new-folder-name').value);
@@ -445,8 +662,9 @@ function bindEvents() {
   noteTitleInput.addEventListener('input', scheduleSave);
   noteContentInput.addEventListener('input', scheduleSave);
 
-  // Delete note
   $('delete-note-btn').addEventListener('click', deleteActiveNote);
+  $('restore-note-btn').addEventListener('click', () => void restoreActiveNote());
+  $('erase-note-btn').addEventListener('click', () => void eraseActiveNoteForever());
 
   // App links panel
   appLinksBody.addEventListener('click', e => {
@@ -467,10 +685,7 @@ function bindEvents() {
     }
   });
 
-  // AI panel
-  $('toggle-ai-btn').addEventListener('click', () => {
-    aiPanel.classList.contains('hidden') ? showAiPanel() : hideAiPanel();
-  });
+  $('toggle-ai-btn').addEventListener('click', () => toggleAiPanel());
   $('ai-close-btn').addEventListener('click', hideAiPanel);
   aiSendBtn.addEventListener('click', sendAiMessage);
   aiInput.addEventListener('keydown', e => {
@@ -495,21 +710,49 @@ function bindEvents() {
   });
   settingsOverlay.addEventListener('click', e => { if (e.target === settingsOverlay) closeSettings(); });
 
-  // In-app keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if (e.metaKey && e.key === 'n') { e.preventDefault(); createNote(); }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && shouldUseArrowNoteNav(e)) {
+      e.preventDefault();
+      void navigateNoteList(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (shouldUseDeleteNoteKey(e)) {
+      e.preventDefault();
+      const id = state.activeNote?.id ?? state.highlightedNoteId;
+      if (id != null) void trashNoteById(id);
+      return;
+    }
+    if (e.metaKey && e.key === 'n' && !e.shiftKey) { e.preventDefault(); createNote(); }
+    if (e.metaKey && e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewFolderModal(); }
     if (e.metaKey && e.shiftKey && e.key === 'F') { e.preventDefault(); searchInput.focus(); searchInput.select(); }
-    if (e.metaKey && e.shiftKey && e.key === 'A') { e.preventDefault(); aiPanel.classList.contains('hidden') ? showAiPanel() : hideAiPanel(); }
     if (e.key === 'Escape') {
       if (!addLinkModal.classList.contains('hidden')) { addLinkModal.classList.add('hidden'); return; }
       if (!newFolderModal.classList.contains('hidden')) { newFolderModal.classList.add('hidden'); return; }
       if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }
+      if (e.target === searchInput) return;
+      if (state.activeNote && editorContent.style.display !== 'none') {
+        e.preventDefault();
+        void saveAndExitNote();
+      }
     }
   });
 
+  document.addEventListener(
+    'keydown',
+    e => {
+      if (e.metaKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        toggleAiPanel();
+      }
+    },
+    true
+  );
+
   // Main-process events
   window.api.onNewNote(() => createNote());
+  window.api.onNewFolder(() => openNewFolderModal());
   window.api.onFocusSearch(() => { searchInput.focus(); searchInput.select(); });
+  window.api.onToggleAi(() => toggleAiPanel());
   window.api.onOpenNote(noteId => selectNote(noteId));
   window.api.onSurfacingToggled(enabled => {
     state.config.surfacingEnabled = enabled;

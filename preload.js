@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('api', {
   createNote:        (data)            => ipcRenderer.invoke('create-note', data),
   updateNote:        (id, data)        => ipcRenderer.invoke('update-note', id, data),
   deleteNote:        (id)              => ipcRenderer.invoke('delete-note', id),
+  restoreNote:       (id)              => ipcRenderer.invoke('restore-note', id),
+  permanentDeleteNote:(id)             => ipcRenderer.invoke('permanent-delete-note', id),
   moveNote:          (noteId, folderId)=> ipcRenderer.invoke('move-note', noteId, folderId),
 
   // ── Surface lifecycle ────────────────────────────────────────────────────
@@ -37,7 +39,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // ── Events from main ─────────────────────────────────────────────────────
   onNewNote:         (cb) => ipcRenderer.on('new-note', () => cb()),
+  onNewFolder:       (cb) => ipcRenderer.on('new-folder', () => cb()),
   onFocusSearch:     (cb) => ipcRenderer.on('focus-search', () => cb()),
+  onToggleAi:        (cb) => ipcRenderer.on('toggle-ai', () => cb()),
   onOpenNote:        (cb) => ipcRenderer.on('open-note', (_e, noteId) => cb(noteId)),
   onSurfacingToggled:(cb) => ipcRenderer.on('surfacing-toggled', (_e, enabled) => cb(enabled)),
 });

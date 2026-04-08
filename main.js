@@ -79,7 +79,9 @@ function createMainWindow() {
       label: 'Notes',
       submenu: [
         { label: 'New Note', accelerator: 'Cmd+N', click: () => mainWin?.webContents.send('new-note') },
+        { label: 'New Folder', accelerator: 'Cmd+Shift+N', click: () => mainWin?.webContents.send('new-folder') },
         { label: 'Focus Search', accelerator: 'Cmd+Shift+F', click: () => mainWin?.webContents.send('focus-search') },
+        { label: 'Toggle AI Assistant', accelerator: 'Cmd+Shift+A', click: () => mainWin?.webContents.send('toggle-ai') },
       ],
     },
     { label: 'Edit', submenu: [
@@ -211,7 +213,15 @@ function registerIpcHandlers() {
   ipcMain.handle('search-notes', (_e, query)    => db.searchNotes(query));
   ipcMain.handle('create-note',  (_e, data)     => db.createNote(data));
   ipcMain.handle('update-note',  (_e, id, data) => db.updateNote(id, data));
-  ipcMain.handle('delete-note',  (_e, id)       => { db.deleteNote(id); return { deleted: id }; });
+  ipcMain.handle('delete-note', (_e, id) => {
+    const ok = db.moveNoteToTrash(id);
+    return ok ? { deleted: id, trashed: true } : { deleted: false };
+  });
+  ipcMain.handle('restore-note', (_e, id) => db.restoreNote(id));
+  ipcMain.handle('permanent-delete-note', (_e, id) => {
+    const ok = db.permanentDeleteNote(id);
+    return ok ? { deleted: id } : { deleted: false };
+  });
   ipcMain.handle('move-note',    (_e, noteId, folderId) => db.moveNoteToFolder(noteId, folderId));
 
   // Surface lifecycle
