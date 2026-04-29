@@ -35,6 +35,11 @@ body {
   gap: 8px;
 }
 
+.capture-attach-row {
+  display: flex;
+  gap: 8px;
+}
+
 #capture-input {
   width: 100%;
   flex: 1;
@@ -364,6 +369,8 @@ button.folder-node:hover {
 #copy-note-btn,
 #close-editor-btn,
 #attach-image-btn,
+#attach-image-capture-btn,
+#attach-file-capture-btn,
 #new-folder-btn,
 #organize-toggle,
 #prompt-apply-btn,
@@ -414,6 +421,11 @@ button.folder-node:hover {
 
 .image-row {
   display: flex;
+}
+
+.file-row {
+  display: flex;
+  margin-top: 8px;
 }
 
 .folder-row {
@@ -595,6 +607,71 @@ button.folder-node:hover {
 }
 
 .note-image-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #5a3038;
+  border-radius: 999px;
+  background: #24161a;
+  color: #e8a0a8;
+  cursor: pointer;
+  line-height: 1;
+}
+
+#note-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.note-file-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0f131a;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.note-file-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 22px; /* space for the remove button */
+}
+
+.note-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.note-file-ext {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.note-file-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.note-file-open {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #172030;
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.note-file-remove {
   position: absolute;
   top: 6px;
   right: 6px;

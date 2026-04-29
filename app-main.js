@@ -6,7 +6,7 @@
  * frontmost-app polling → surfaceEngine → overlay.
  */
 
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, clipboard, dialog } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, clipboard, dialog, shell } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -40,8 +40,18 @@ const MIME_TO_EXT = {
   'image/gif': '.gif',
 };
 
+// Only allow copying a small set of “safe text-ish” file types into note storage.
+// This avoids arbitrary binary attachments.
+const NOTE_FILE_WHITELIST_EXTS = ['pdf', 'md', 'rmd', 'txt'];
+
 async function ensureAttachmentDir() {
   const dir = path.join(app.getPath('userData'), 'note-images');
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
+}
+
+async function ensureFileAttachmentDir() {
+  const dir = path.join(app.getPath('userData'), 'note-files');
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }
@@ -66,12 +76,67 @@ function parseImageDataUrl(dataUrl) {
   return { mime, ext, buffer: Buffer.from(base64, 'base64') };
 }
 
+function parseBase64DataUrl(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  const mime = match[1].toLowerCase();
+  const base64 = match[2];
+  const buffer = Buffer.from(base64, 'base64');
+  if (!buffer || buffer.length === 0) return null;
+  return { mime, buffer };
+}
+
 function safeExtFromPath(inputPath) {
   const ext = path.extname(String(inputPath || '')).toLowerCase();
   if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.gif' || ext === '.webp') {
     return ext === '.jpeg' ? '.jpg' : ext;
   }
   return '.png';
+}
+
+function safeNoteFileExtFromPath(inputPath) {
+  const rawExt = path.extname(String(inputPath || '')).toLowerCase().replace(/^\./, '');
+  if (!rawExt) return null;
+  if (!NOTE_FILE_WHITELIST_EXTS.includes(rawExt)) return null;
+  return rawExt;
+}
+
+function toFilePayload(row) {
+  return {
+    id: row.id,
+    note_id: row.note_id,
+    created_at: row.created_at,
+    file_name: row.file_name,
+    file_ext: row.file_ext,
+  };
+}
+
+async function saveNoteFileAttachment(noteId, srcPath, fileExt) {
+  const dir = await ensureFileAttachmentDir();
+  const originalName = path.basename(srcPath);
+  const fileName = `note-${noteId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+  const destPath = path.join(dir, fileName);
+  await fs.copyFile(srcPath, destPath);
+  const row = db.addNoteFile(noteId, destPath, originalName, fileExt);
+  return toFilePayload(row);
+}
+
+async function saveNoteFileFromDataUrl(noteId, dataUrl, fileName, fileExt) {
+  const dir = await ensureFileAttachmentDir();
+  const ext = String(fileExt || '').toLowerCase().replace(/^\./, '');
+  if (!NOTE_FILE_WHITELIST_EXTS.includes(ext)) return null;
+
+  const parsed = parseBase64DataUrl(dataUrl);
+  if (!parsed || !parsed.buffer || parsed.buffer.length === 0) return null;
+
+  const originalName = String(fileName || `attachment.${ext}`);
+  const safeOriginalName = path.basename(originalName);
+  const destFileName = `note-${noteId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const destPath = path.join(dir, destFileName);
+  await fs.writeFile(destPath, parsed.buffer);
+
+  const row = db.addNoteFile(noteId, destPath, safeOriginalName, ext);
+  return toFilePayload(row);
 }
 
 async function saveImageBuffer(noteId, buffer, ext) {
@@ -103,7 +168,7 @@ function rendererWebPreferences() {
 function createCaptureWindow() {
   captureWin = new BrowserWindow({
     width: 560,
-    height: 130,
+    height: 190,
     show: false,
     frame: false,
     transparent: false,
@@ -286,18 +351,20 @@ function registerIpc() {
   });
   ipcMain.handle('note:delete', (_event, noteId) => {
     const imagePaths = db.getImagePathsForNote(noteId);
+    const filePaths = db.getFilePathsForNote(noteId);
     const ok = db.deleteNote(noteId);
     if (ok) {
-      void cleanupImagePaths(imagePaths);
+      void cleanupImagePaths([...imagePaths, ...filePaths]);
       notifySearchNotesChanged();
     }
     return ok;
   });
   ipcMain.handle('note:delete-many', (_event, noteIds) => {
     const imagePaths = db.getImagePathsForNotes(noteIds);
+    const filePaths = db.getFilePathsForNotes(noteIds);
     const deletedCount = db.deleteNotes(noteIds);
     if (deletedCount > 0) {
-      void cleanupImagePaths(imagePaths);
+      void cleanupImagePaths([...imagePaths, ...filePaths]);
       notifySearchNotesChanged();
     }
     return deletedCount;
@@ -367,6 +434,57 @@ function registerIpc() {
     await cleanupImagePaths([removed.image_path]);
     notifySearchNotesChanged();
     return true;
+  });
+
+  ipcMain.handle('note-files:list', (_event, noteId) => db.listNoteFiles(noteId).map(toFilePayload));
+
+  ipcMain.handle('note-files:add-from-picker', async (event, noteId) => {
+    const note = db.getNote(noteId);
+    if (!note) return [];
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) || searchWin || null;
+    const result = await dialog.showOpenDialog(parentWindow, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Allowed note files', extensions: NOTE_FILE_WHITELIST_EXTS }],
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return [];
+
+    const created = [];
+    for (const srcPath of result.filePaths) {
+      const fileExt = safeNoteFileExtFromPath(srcPath);
+      if (!fileExt) continue;
+      const saved = await saveNoteFileAttachment(noteId, srcPath, fileExt);
+      created.push(saved);
+    }
+
+    if (created.length > 0) notifySearchNotesChanged();
+    return created;
+  });
+
+  ipcMain.handle('note-files:add-from-data-url', async (_event, noteId, dataUrl, fileName, fileExt) => {
+    const note = db.getNote(noteId);
+    if (!note) return null;
+    const saved = await saveNoteFileFromDataUrl(noteId, dataUrl, fileName, fileExt);
+    if (saved) notifySearchNotesChanged();
+    return saved;
+  });
+
+  ipcMain.handle('note-files:remove', async (_event, noteId, fileId) => {
+    const removed = db.removeNoteFile(noteId, fileId);
+    if (!removed) return false;
+    await cleanupImagePaths([removed.file_path]);
+    notifySearchNotesChanged();
+    return true;
+  });
+
+  ipcMain.handle('note-files:open', async (_event, noteId, fileId) => {
+    const row = db.getNoteFile(noteId, fileId);
+    if (!row) return false;
+    try {
+      await shell.openPath(row.file_path);
+      return true;
+    } catch (_error) {
+      return false;
+    }
   });
 
   ipcMain.handle('ai:organize-chat', async (_event, payload) => {

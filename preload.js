@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld('mvp', {
   addNoteImageFromDataUrl: (noteId, dataUrl) => ipcRenderer.invoke('note-images:add-from-data-url', noteId, dataUrl),
   addNoteImagesFromPicker: (noteId) => ipcRenderer.invoke('note-images:add-from-picker', noteId),
   removeNoteImage: (noteId, imageId) => ipcRenderer.invoke('note-images:remove', noteId, imageId),
+  listNoteFiles: (noteId) => ipcRenderer.invoke('note-files:list', noteId),
+  addNoteFilesFromPicker: (noteId) => ipcRenderer.invoke('note-files:add-from-picker', noteId),
+  addNoteFileFromDataUrl: (noteId, dataUrl, fileName, fileExt) =>
+    ipcRenderer.invoke('note-files:add-from-data-url', noteId, dataUrl, fileName, fileExt),
+  removeNoteFile: (noteId, fileId) => ipcRenderer.invoke('note-files:remove', noteId, fileId),
+  openNoteFile: (noteId, fileId) => ipcRenderer.invoke('note-files:open', noteId, fileId),
   listFolders: () => ipcRenderer.invoke('folders:list'),
   getFolderDiagram: () => ipcRenderer.invoke('folders:diagram'),
   createFolder: (name) => ipcRenderer.invoke('folders:create', name),

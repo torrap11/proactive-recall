@@ -28,11 +28,13 @@ const editorTextEl = document.getElementById('editor-text');
 const closeEditorBtn = document.getElementById('close-editor-btn');
 const copyBtn = document.getElementById('copy-note-btn');
 const attachImageBtn = document.getElementById('attach-image-btn');
+const attachFileBtn = document.getElementById('attach-file-btn');
 const editorFolderSelect = document.getElementById('editor-folder-select');
 const appSelect = document.getElementById('app-select');
 const linkBtn = document.getElementById('link-btn');
 const linksEl = document.getElementById('links');
 const noteImagesEl = document.getElementById('note-images');
+const noteFilesEl = document.getElementById('note-files');
 const organizePanelEl = document.getElementById('organize-panel');
 const organizeMessagesEl = document.getElementById('organize-messages');
 const organizeInputEl = document.getElementById('organize-input');
@@ -133,6 +135,7 @@ function closeEditor() {
   editorFolderSelect.value = 'unfiled';
   linksEl.innerHTML = '';
   noteImagesEl.innerHTML = '';
+  noteFilesEl.innerHTML = '';
   renderResults();
   if (state.listFocusId != null) focusListRow(state.listFocusId);
   else queryInput.focus();
@@ -414,6 +417,7 @@ async function openNote(noteId) {
   renderResults();
   await renderLinks();
   await renderNoteImages();
+  await renderNoteFiles();
 }
 
 async function renderLinks() {
@@ -449,6 +453,31 @@ async function renderNoteImages() {
       (image) => `<div class="note-image-card">
         <img src="${escapeAttr(image.file_url)}" alt="Attachment" />
         <button type="button" class="note-image-remove" data-image-id="${image.id}" title="Remove image">×</button>
+      </div>`
+    )
+    .join('');
+}
+
+async function renderNoteFiles() {
+  if (!state.activeId) {
+    noteFilesEl.innerHTML = '';
+    return;
+  }
+  const files = await window.mvp.listNoteFiles(state.activeId);
+  if (!Array.isArray(files) || files.length === 0) {
+    noteFilesEl.innerHTML = '';
+    return;
+  }
+
+  noteFilesEl.innerHTML = files
+    .map(
+      (file) => `<div class="note-file-card">
+        <div class="note-file-meta">
+          <span class="note-file-name" title="${escapeAttr(file.file_name)}">${escapeHtml(file.file_name)}</span>
+          <span class="note-file-ext">${escapeHtml(file.file_ext)}</span>
+        </div>
+        <button type="button" class="note-file-open" data-file-id="${file.id}" title="Open attached file">Open</button>
+        <button type="button" class="note-file-remove" data-file-id="${file.id}" title="Remove file">×</button>
       </div>`
     )
     .join('');
@@ -684,6 +713,12 @@ attachImageBtn.addEventListener('click', async () => {
   await renderNoteImages();
 });
 
+attachFileBtn.addEventListener('click', async () => {
+  if (!state.activeId) return;
+  await window.mvp.addNoteFilesFromPicker(state.activeId);
+  await renderNoteFiles();
+});
+
 copyBtn.addEventListener('click', async () => {
   await window.mvp.copyText(editorTextEl.value);
 });
@@ -708,9 +743,18 @@ function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('Failed reading image'));
+    reader.onerror = () => reject(reader.error || new Error('Failed reading file'));
     reader.readAsDataURL(file);
   });
+}
+
+const NOTE_FILE_WHITELIST_EXTS = ['pdf', 'md', 'rmd', 'txt'];
+
+function extFromFileName(fileName) {
+  const rawExt = String(fileName || '').toLowerCase().replace(/^.*\./, '');
+  if (!rawExt) return null;
+  if (!NOTE_FILE_WHITELIST_EXTS.includes(rawExt)) return null;
+  return rawExt;
 }
 
 linkBtn.addEventListener('click', () => {
@@ -735,16 +779,36 @@ editorFolderSelect.addEventListener('change', async () => {
 editorTextEl.addEventListener('paste', async (event) => {
   if (!state.activeId) return;
   const items = [...(event.clipboardData?.items || [])];
-  const imageItems = items.filter((item) => item.kind === 'file' && String(item.type || '').startsWith('image/'));
-  if (imageItems.length === 0) return;
-  event.preventDefault();
-  for (const item of imageItems) {
+
+  const files = [];
+  for (const item of items) {
+    if (item.kind !== 'file') continue;
     const file = item.getAsFile();
     if (!file) continue;
+    files.push(file);
+  }
+
+  const imageFiles = files.filter((f) => String(f.type || '').startsWith('image/'));
+  const noteFileFiles = files.filter((f) => extFromFileName(f.name));
+
+  if (imageFiles.length === 0 && noteFileFiles.length === 0) return;
+
+  event.preventDefault();
+
+  for (const file of imageFiles) {
     const dataUrl = await fileToDataUrl(file);
     await window.mvp.addNoteImageFromDataUrl(state.activeId, dataUrl);
   }
+
+  for (const file of noteFileFiles) {
+    const fileExt = extFromFileName(file.name);
+    if (!fileExt) continue;
+    const dataUrl = await fileToDataUrl(file);
+    await window.mvp.addNoteFileFromDataUrl(state.activeId, dataUrl, file.name || `pasted.${fileExt}`, fileExt);
+  }
+
   await renderNoteImages();
+  await renderNoteFiles();
 });
 
 linksEl.addEventListener('click', async (event) => {
@@ -765,6 +829,26 @@ noteImagesEl.addEventListener('click', async (event) => {
   if (!Number.isFinite(imageId)) return;
   await window.mvp.removeNoteImage(state.activeId, imageId);
   await renderNoteImages();
+});
+
+noteFilesEl.addEventListener('click', async (event) => {
+  if (!state.activeId) return;
+
+  const openBtn = event.target.closest('.note-file-open');
+  if (openBtn) {
+    const fileId = Number(openBtn.dataset.fileId);
+    if (!Number.isFinite(fileId)) return;
+    await window.mvp.openNoteFile(state.activeId, fileId);
+    return;
+  }
+
+  const removeBtn = event.target.closest('.note-file-remove');
+  if (removeBtn) {
+    const fileId = Number(removeBtn.dataset.fileId);
+    if (!Number.isFinite(fileId)) return;
+    await window.mvp.removeNoteFile(state.activeId, fileId);
+    await renderNoteFiles();
+  }
 });
 
 function appendOrganizeBubble(role, text, isError) {

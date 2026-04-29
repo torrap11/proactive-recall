@@ -91,6 +91,15 @@ function getDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS note_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      file_ext TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS folders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -540,6 +549,64 @@ function getImagePathsForNotes(noteIds) {
     .filter(Boolean);
 }
 
+function listNoteFiles(noteId) {
+  return getDb()
+    .prepare('SELECT id, note_id, file_path, file_name, file_ext, created_at FROM note_files WHERE note_id = ? ORDER BY id ASC')
+    .all(noteId);
+}
+
+function addNoteFile(noteId, filePath, fileName, fileExt) {
+  const result = getDb()
+    .prepare(
+      "INSERT INTO note_files (note_id, file_path, file_name, file_ext, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
+    )
+    .run(noteId, filePath, fileName, fileExt);
+  return getDb()
+    .prepare('SELECT id, note_id, file_path, file_name, file_ext, created_at FROM note_files WHERE id = ?')
+    .get(result.lastInsertRowid);
+}
+
+function removeNoteFile(noteId, fileId) {
+  const row = getDb()
+    .prepare('SELECT id, note_id, file_path, file_name, file_ext, created_at FROM note_files WHERE id = ? AND note_id = ?')
+    .get(fileId, noteId);
+  if (!row) return null;
+  getDb().prepare('DELETE FROM note_files WHERE id = ?').run(fileId);
+  return row;
+}
+
+function getNoteFile(noteId, fileId) {
+  return getDb()
+    .prepare('SELECT id, note_id, file_path, file_name, file_ext, created_at FROM note_files WHERE id = ? AND note_id = ?')
+    .get(fileId, noteId) || null;
+}
+
+function getNoteFilesForNote(noteId) {
+  return getDb()
+    .prepare('SELECT id, file_path, file_name, file_ext, created_at FROM note_files WHERE note_id = ? ORDER BY id ASC')
+    .all(noteId);
+}
+
+function getFilePathsForNote(noteId) {
+  return getDb()
+    .prepare('SELECT file_path FROM note_files WHERE note_id = ?')
+    .all(noteId)
+    .map((row) => row.file_path)
+    .filter(Boolean);
+}
+
+function getFilePathsForNotes(noteIds) {
+  if (!Array.isArray(noteIds) || noteIds.length === 0) return [];
+  const normalized = [...new Set(noteIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  if (normalized.length === 0) return [];
+  const placeholders = normalized.map(() => '?').join(', ');
+  return getDb()
+    .prepare(`SELECT file_path FROM note_files WHERE note_id IN (${placeholders})`)
+    .all(...normalized)
+    .map((row) => row.file_path)
+    .filter(Boolean);
+}
+
 function getNotesLinkedToApp(appKey, limit = 50) {
   const mode = getNoteLinkMode();
   if (mode === 'both') {
@@ -683,6 +750,12 @@ module.exports = {
   removeNoteImage,
   getImagePathsForNote,
   getImagePathsForNotes,
+  listNoteFiles,
+  addNoteFile,
+  removeNoteFile,
+  getNoteFile,
+  getFilePathsForNote,
+  getFilePathsForNotes,
   getNotesLinkedToApp,
   getKeywordCandidates,
   canSurfaceNote,
