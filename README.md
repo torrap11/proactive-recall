@@ -88,6 +88,14 @@ See `.env.example` for the full template.
 - `npm run dist:universal` - Build macOS universal distribution
 - `npm run dist:signed` - Build signed macOS distribution
 
+## Downloadable Builds (macOS)
+
+`electron-builder` writes distributable artifacts to `dist/`.
+
+After running `npm run dist:universal`, you should find:
+- `dist/Proactive Recall-<version>-universal.dmg`
+- `dist/Proactive Recall-<version>-universal-mac.zip`
+
 ## Build and Release (macOS)
 
 - Build configuration is in `package.json` under `build`
