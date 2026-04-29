@@ -3,7 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 
-function applyEnvFile(filePath) {
+/** Parse a dotenv file into a plain object (no process.env mutation). */
+function parseEnvFile(filePath) {
+  const env = {};
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
     for (const line of raw.split('\n')) {
@@ -19,19 +21,26 @@ function applyEnvFile(filePath) {
       ) {
         val = val.slice(1, -1);
       }
-      if (key) process.env[key] = val;
+      if (key) env[key] = val;
     }
-    return true;
   } catch {
-    return false;
+    // Missing or unreadable file
   }
+  return env;
 }
 
-/** Merge env files in order; later files override keys from earlier ones. */
-function loadDotenv(userDataDir) {
-  const files = [path.join(__dirname, '.env'), path.join(process.cwd(), '.env')];
-  if (userDataDir) files.push(path.join(userDataDir, '.env'));
-  for (const filePath of files) applyEnvFile(filePath);
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
+
+/**
+ * Anthropic credentials come only from the app userData .env (e.g. set via in-app API Key).
+ * Repo, cwd, and shell process.env are intentionally ignored so installs do not pick up dev keys.
+ */
+function readAnthropicCredentials(userDataDir) {
+  if (!userDataDir) return { apiKey: '', model: DEFAULT_MODEL };
+  const fileEnv = parseEnvFile(path.join(userDataDir, '.env'));
+  const apiKey = String(fileEnv.ANTHROPIC_API_KEY || '').trim();
+  const model = String(fileEnv.PROACTIVE_RECALL_MODEL || '').trim() || DEFAULT_MODEL;
+  return { apiKey, model };
 }
 
 function buildOrganizeSnapshot(database) {
@@ -95,14 +104,12 @@ async function callAnthropic({ apiKey, model, system, messages }) {
   return block ? block.text : '';
 }
 
-async function organizeChat(database, { history, userMessage }) {
-  loadDotenv();
-  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-  const model = process.env.PROACTIVE_RECALL_MODEL || 'claude-sonnet-4-6';
+async function organizeChat(database, { history, userMessage, userDataDir }) {
+  const { apiKey, model } = readAnthropicCredentials(userDataDir);
   if (!apiKey) {
     return {
       error:
-        'Missing ANTHROPIC_API_KEY. Create a .env file with ANTHROPIC_API_KEY=sk-ant-... in your proactive-recall project folder, or in the app data folder (e.g. ~/Library/Application Support/Electron/.env when running npm start). Restart the app after saving.',
+        'No API key configured. Click "API Key" in the toolbar (or "Set API Key" in the AI panel), paste your Anthropic key, and save. Keys in the project folder are not used.',
     };
   }
   const snapshot = buildOrganizeSnapshot(database);
@@ -215,7 +222,7 @@ function applyOrganizePlan(database, plan) {
 }
 
 module.exports = {
-  loadDotenv,
+  readAnthropicCredentials,
   buildOrganizeSnapshot,
   organizeChat,
   applyOrganizePlan,

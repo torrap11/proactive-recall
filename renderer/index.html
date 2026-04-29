@@ -11,6 +11,7 @@
   <main class="search-shell">
     <div class="search-toolbar">
       <button id="import-db-btn" type="button">Import DB</button>
+      <button id="toolbar-api-key-btn" type="button" title="Anthropic API key for AI folder organize">API Key</button>
       <input id="query" type="search" placeholder="Search notes..." autofocus />
     </div>
     <div class="prompt-toolbar">
@@ -26,7 +27,10 @@
     <section id="organize-panel" class="organize-panel hidden" aria-label="AI folder organizer">
       <div class="organize-head">
         <span class="organize-title">Organize folders with AI</span>
-        <span class="organize-hint">API: ANTHROPIC_API_KEY in .env — restart app after edits</span>
+        <div class="organize-head-actions">
+          <span id="organize-api-status" class="organize-hint">API key not set</span>
+          <button id="set-api-key-btn" type="button">Set API Key</button>
+        </div>
       </div>
       <div id="organize-messages" class="organize-messages"></div>
     </section>
@@ -68,6 +72,29 @@
       <div id="links"></div>
     </section>
   </main>
+  <div id="api-key-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="api-key-modal-title">
+    <div class="modal-dialog">
+      <h2 id="api-key-modal-title" class="modal-title">Anthropic API key</h2>
+      <p class="modal-hint">Paste your key (starts with <code>sk-ant-</code>). It is saved only on this Mac in the app data folder.</p>
+      <p class="modal-link-row">
+        <a id="anthropic-key-link" href="#" rel="noreferrer">Get API key from Anthropic dashboard</a>
+      </p>
+      <label class="modal-label" for="api-key-input">API key</label>
+      <input
+        id="api-key-input"
+        type="password"
+        class="modal-input"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="sk-ant-..."
+      />
+      <p id="api-key-error" class="modal-error hidden" role="alert"></p>
+      <div class="modal-actions">
+        <button type="button" id="api-key-cancel" class="modal-btn secondary">Cancel</button>
+        <button type="button" id="api-key-save" class="modal-btn primary">Save</button>
+      </div>
+    </div>
+  </div>
   <script src="renderer.js"></script>
 </body>
 </html>

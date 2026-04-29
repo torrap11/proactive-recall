@@ -16,6 +16,7 @@ const state = {
 
 const queryInput = document.getElementById('query');
 const importDbBtn = document.getElementById('import-db-btn');
+const toolbarApiKeyBtn = document.getElementById('toolbar-api-key-btn');
 const promptInputEl = document.getElementById('prompt-input');
 const promptConfirmBtn = document.getElementById('prompt-confirm-btn');
 const folderDiagramEl = document.getElementById('folder-diagram');
@@ -38,6 +39,14 @@ const noteImagesEl = document.getElementById('note-images');
 const noteFilesEl = document.getElementById('note-files');
 const organizePanelEl = document.getElementById('organize-panel');
 const organizeMessagesEl = document.getElementById('organize-messages');
+const setApiKeyBtn = document.getElementById('set-api-key-btn');
+const organizeApiStatusEl = document.getElementById('organize-api-status');
+const apiKeyModal = document.getElementById('api-key-modal');
+const apiKeyInput = document.getElementById('api-key-input');
+const apiKeyErrorEl = document.getElementById('api-key-error');
+const apiKeySaveBtn = document.getElementById('api-key-save');
+const apiKeyCancelBtn = document.getElementById('api-key-cancel');
+const anthropicKeyLink = document.getElementById('anthropic-key-link');
 
 let saveTimer = null;
 let organizeHistory = [];
@@ -867,6 +876,64 @@ function appendOrganizeBubble(role, text, isError) {
   organizeMessagesEl.scrollTop = organizeMessagesEl.scrollHeight;
 }
 
+async function refreshAiKeyStatus() {
+  if (!organizeApiStatusEl) return;
+  try {
+    const status = await window.mvp.getAiKeyStatus();
+    organizeApiStatusEl.textContent = status && status.hasKey ? 'API key set' : 'API key not set';
+  } catch (_error) {
+    organizeApiStatusEl.textContent = 'API status unavailable';
+  }
+}
+
+function showApiKeyModal() {
+  if (!apiKeyModal || !apiKeyInput) return;
+  apiKeyErrorEl?.classList.add('hidden');
+  if (apiKeyErrorEl) apiKeyErrorEl.textContent = '';
+  apiKeyInput.value = '';
+  apiKeyModal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    apiKeyInput.focus();
+    apiKeyInput.select();
+  });
+}
+
+function hideApiKeyModal() {
+  apiKeyModal?.classList.add('hidden');
+}
+
+async function saveApiKeyFromModal() {
+  if (!apiKeyInput) return;
+  const trimmed = apiKeyInput.value.trim();
+  if (!trimmed) {
+    if (apiKeyErrorEl) {
+      apiKeyErrorEl.textContent = 'Enter your API key.';
+      apiKeyErrorEl.classList.remove('hidden');
+    }
+    return;
+  }
+  if (apiKeySaveBtn) apiKeySaveBtn.disabled = true;
+  try {
+    const result = await window.mvp.setAiKey(trimmed);
+    if (!result || !result.ok) {
+      if (apiKeyErrorEl) {
+        apiKeyErrorEl.textContent = (result && result.error) || 'Failed to save API key.';
+        apiKeyErrorEl.classList.remove('hidden');
+      }
+      return;
+    }
+    await refreshAiKeyStatus();
+    hideApiKeyModal();
+  } catch (e) {
+    if (apiKeyErrorEl) {
+      apiKeyErrorEl.textContent = e.message || String(e);
+      apiKeyErrorEl.classList.remove('hidden');
+    }
+  } finally {
+    if (apiKeySaveBtn) apiKeySaveBtn.disabled = false;
+  }
+}
+
 async function runOrganizerFromPrompt(promptText) {
   const text = String(promptText || '').trim();
   if (!text) return;
@@ -988,9 +1055,56 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (event.key === 'Escape') {
+    if (apiKeyModal && !apiKeyModal.classList.contains('hidden')) {
+      event.preventDefault();
+      hideApiKeyModal();
+      return;
+    }
     event.preventDefault();
     window.mvp.hideSearch();
   }
+});
+
+setApiKeyBtn?.addEventListener('click', () => {
+  showApiKeyModal();
+});
+
+toolbarApiKeyBtn?.addEventListener('click', () => {
+  showApiKeyModal();
+});
+
+apiKeyCancelBtn?.addEventListener('click', () => {
+  hideApiKeyModal();
+});
+
+apiKeySaveBtn?.addEventListener('click', () => {
+  void saveApiKeyFromModal();
+});
+
+apiKeyInput?.addEventListener('keydown', (event) => {
+  const isPasteShortcut = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'v';
+  if (isPasteShortcut) {
+    event.preventDefault();
+    void (async () => {
+      const clip = await window.mvp.readClipboardText();
+      if (!clip) return;
+      apiKeyInput.value = String(clip);
+    })();
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    void saveApiKeyFromModal();
+  }
+});
+
+apiKeyModal?.addEventListener('click', (event) => {
+  if (event.target === apiKeyModal) hideApiKeyModal();
+});
+
+anthropicKeyLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  void window.mvp.openExternalUrl('https://console.anthropic.com/settings/keys');
 });
 
 window.mvp.onSearchFocus(async (payload) => {
@@ -1013,6 +1127,7 @@ async function init() {
   await loadApps();
   await loadFolders();
   await runQuery('');
+  await refreshAiKeyStatus();
 }
 
 init().catch((error) => {

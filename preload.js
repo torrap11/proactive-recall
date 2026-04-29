@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('mvp', {
   importDbFromPicker: () => ipcRenderer.invoke('db:import-from-picker'),
   resolveAppKey: (raw) => ipcRenderer.invoke('apps:resolve', raw),
   copyText: (text) => ipcRenderer.invoke('clipboard:copy', text),
+  readClipboardText: () => ipcRenderer.invoke('clipboard:read'),
   hideCapture: () => ipcRenderer.send('window:hide-capture'),
   hideSearch: () => ipcRenderer.send('window:hide-search'),
   openSearch: (payload) => ipcRenderer.send('window:show-search', payload),
@@ -42,4 +43,7 @@ contextBridge.exposeInMainWorld('mvp', {
   onNotesChanged: (cb) => ipcRenderer.on('notes-changed', () => cb()),
   organizeChat: (payload) => ipcRenderer.invoke('ai:organize-chat', payload),
   applyOrganizePlan: (plan) => ipcRenderer.invoke('ai:organize-apply', plan),
+  getAiKeyStatus: () => ipcRenderer.invoke('ai:key:get-status'),
+  setAiKey: (apiKey) => ipcRenderer.invoke('ai:key:set', apiKey),
+  openExternalUrl: (url) => ipcRenderer.invoke('external:open-url', url),
 });

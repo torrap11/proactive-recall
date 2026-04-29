@@ -99,12 +99,17 @@ body {
   gap: 8px;
 }
 
-#import-db-btn {
+#import-db-btn,
+#toolbar-api-key-btn {
   white-space: nowrap;
   min-width: 92px;
   height: 100%;
   padding: 0 12px;
   border-radius: 10px;
+}
+
+#toolbar-api-key-btn {
+  min-width: 72px;
 }
 
 .prompt-toolbar {
@@ -391,6 +396,8 @@ button.folder-node:hover {
 #prompt-apply-btn,
 #prompt-confirm-btn,
 #import-db-btn,
+#toolbar-api-key-btn,
+#set-api-key-btn,
 #organize-send,
 #organize-apply,
 #link-btn,
@@ -486,6 +493,12 @@ button.folder-node:hover {
 .organize-hint {
   font-size: 11px;
   color: var(--muted);
+}
+
+.organize-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .organize-messages {
@@ -720,4 +733,118 @@ button.folder-node:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal-backdrop.hidden {
+  display: none;
+}
+
+.modal-dialog {
+  width: min(420px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 18px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.modal-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-hint {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.modal-hint code {
+  font-size: 11px;
+  color: #a6f9ff;
+}
+
+.modal-link-row {
+  margin: -4px 0 12px;
+  font-size: 12px;
+}
+
+.modal-link-row a {
+  color: #8dc1ff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.modal-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.modal-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0f131a;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.modal-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.modal-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #e8a0a8;
+}
+
+.modal-error.hidden {
+  display: none;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-btn {
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.modal-btn.secondary {
+  background: #172030;
+  color: var(--text);
+}
+
+.modal-btn.primary {
+  background: #1f3d7a;
+  border-color: #35507f;
+  color: var(--text);
 }

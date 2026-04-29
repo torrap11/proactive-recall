@@ -430,6 +430,49 @@ function notifySearchNotesChanged() {
 }
 
 function registerIpc() {
+  ipcMain.handle('ai:key:get-status', async () => {
+    const { apiKey } = aiOrganize.readAnthropicCredentials(app.getPath('userData'));
+    return { hasKey: apiKey.length > 0 };
+  });
+  ipcMain.handle('ai:key:set', async (_event, rawKey) => {
+    const key = String(rawKey || '').trim();
+    if (!key) return { ok: false, error: 'Empty API key' };
+    if (!key.startsWith('sk-ant-')) return { ok: false, error: 'Anthropic key should start with sk-ant-' };
+    const userDataDir = app.getPath('userData');
+    const envPath = path.join(userDataDir, '.env');
+
+    let content = '';
+    try {
+      content = await fs.readFile(envPath, 'utf8');
+    } catch (_error) {
+      content = '';
+    }
+    const lines = content ? content.split(/\r?\n/) : [];
+    let replaced = false;
+    const nextLines = lines.map((line) => {
+      if (/^\s*ANTHROPIC_API_KEY\s*=/.test(line)) {
+        replaced = true;
+        return `ANTHROPIC_API_KEY=${key}`;
+      }
+      return line;
+    });
+    if (!replaced) nextLines.push(`ANTHROPIC_API_KEY=${key}`);
+    const nextContent = `${nextLines.filter((line, idx, arr) => !(idx === arr.length - 1 && line === '')).join('\n')}\n`;
+    await fs.mkdir(userDataDir, { recursive: true });
+    await fs.writeFile(envPath, nextContent, 'utf8');
+    return { ok: true };
+  });
+  ipcMain.handle('external:open-url', async (_event, targetUrl) => {
+    const url = String(targetUrl || '').trim();
+    if (!url) return false;
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  });
+
   ipcMain.handle('capture:save', (_event, text, appKey) => {
     const note = db.createNote(text);
     if (note && appKey) db.linkNoteToApp(note.id, appKey);
@@ -494,6 +537,7 @@ function registerIpc() {
     clipboard.writeText(String(text || ''));
     return true;
   });
+  ipcMain.handle('clipboard:read', () => clipboard.readText());
   ipcMain.handle('note-images:list', (_event, noteId) => db.listNoteImages(noteId).map(toImagePayload));
   ipcMain.handle('note-images:add-from-data-url', async (_event, noteId, dataUrl) => {
     const note = db.getNote(noteId);
@@ -592,7 +636,11 @@ function registerIpc() {
     if (!userMessage) return { error: 'Empty message' };
     const history = Array.isArray(payload && payload.history) ? payload.history : [];
     try {
-      return await aiOrganize.organizeChat(db, { history, userMessage });
+      return await aiOrganize.organizeChat(db, {
+        history,
+        userMessage,
+        userDataDir: app.getPath('userData'),
+      });
     } catch (e) {
       return { error: e.message || String(e) };
     }
@@ -636,7 +684,6 @@ app.whenReady().then(async () => {
   db.listFolders(); // triggers getDb() → logs path, runs migration if needed
   console.log('[app] DB path:', db.getDbPath());
 
-  aiOrganize.loadDotenv(app.getPath('userData'));
   createCaptureWindow();
   createSearchWindow();
   buildAppMenu();
