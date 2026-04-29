@@ -1,5 +1,5 @@
 {
-  "name": "proactive-recall",
+  "name": "jot",
   "version": "1.0.0",
   "description": "Local-first notes app with proactive surfacing based on frontmost app",
   "main": "app-main.js",
@@ -14,8 +14,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {
-    "appId": "com.proactiverecall.app",
-    "productName": "Proactive Recall",
+    "appId": "com.jot.app",
+    "productName": "jot",
     "files": [
       "app-main.js",
       "preload.js",
@@ -44,7 +44,7 @@
         "zip"
       ],
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Proactive Recall needs to read the frontmost application to surface relevant notes."
+        "NSAppleEventsUsageDescription": "jot needs to read the frontmost application to surface relevant notes."
       }
     },
     "afterSign": "scripts/notarize.js"

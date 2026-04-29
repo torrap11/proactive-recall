@@ -1,12 +1,105 @@
 'use strict';
 
 const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
 let db;
 /** Cached: 'app_key' | 'bundle_id' | 'both' (legacy tables can have NOT NULL bundle_id + added app_key). */
 let cachedNoteLinkMode = null;
+/** Set once getDb() opens the DB; read via getDbPath(). */
+let _resolvedDbPath = null;
+/** Paths of secondary legacy DBs to merge after canonical DB is open (cleared after first run). */
+let _pendingSecondaryMerge = [];
+
+function firstExistingPath(paths) {
+  for (const p of paths) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function resolveDbPath() {
+  const userData = app.getPath('userData');
+  const appName = app.getName();
+  const appSupport = path.join(app.getPath('home'), 'Library', 'Application Support');
+  const canonical = path.join(userData, 'proactive-recall.db');
+
+  console.log('[db] app.getName():', appName);
+  console.log('[db] app.getPath(userData):', userData);
+
+  if (fs.existsSync(canonical)) {
+    console.log('[db] resolved → canonical (exists):', canonical);
+    return canonical;
+  }
+
+  // Legacy candidates in priority order (most-data-first):
+  //   1. proactive-recall/proactive-recall.db  – full historical dataset
+  //   2. Proactive Recall/proactive-recall.db  – uppercase macOS variant
+  //   3. jot/jot.db                            – old filename used by pre-rename packaged app
+  const legacyCandidates = [
+    path.join(appSupport, 'proactive-recall', 'proactive-recall.db'),
+    path.join(appSupport, 'Proactive Recall', 'proactive-recall.db'),
+    path.join(userData, 'jot.db'),
+  ];
+  const foundLegacy = legacyCandidates.filter(p => fs.existsSync(p));
+
+  if (foundLegacy.length === 0) {
+    console.log('[db] no existing DB → creating canonical:', canonical);
+    return canonical;
+  }
+
+  const primary = foundLegacy[0];
+  const secondaries = foundLegacy.slice(1);
+  console.log('[db] legacy DB(s) found:', foundLegacy);
+  console.log('[db] one-time migration: copying primary →', canonical);
+
+  try {
+    fs.copyFileSync(primary, canonical);
+    // Provenance record – never delete; confirms migration happened.
+    fs.writeFileSync(
+      canonical + '.migrated-from',
+      JSON.stringify({ migratedAt: new Date().toISOString(), primary, secondaries }, null, 2),
+    );
+    console.log('[db] migration copy complete (fallback used:', primary, ')');
+    if (secondaries.length > 0) {
+      console.log('[db] secondary DBs to merge after open:', secondaries);
+      _pendingSecondaryMerge = secondaries;
+    }
+  } catch (err) {
+    console.error('[db] migration copy failed:', err.message, '→ using primary directly:', primary);
+    return primary;
+  }
+
+  return canonical;
+}
+
+/**
+ * Import non-duplicate notes (by text + created_at) from a secondary legacy DB into the
+ * already-open main DB. Uses SQLite ATTACH so no external tools are needed.
+ * Empty-text notes (schema migration artifacts) are skipped.
+ */
+function mergeNotesFromLegacyDb(mainDb, legacyPath) {
+  console.log('[db] merging secondary legacy DB:', legacyPath);
+  const escaped = legacyPath.replace(/'/g, "''");
+  mainDb.exec(`ATTACH DATABASE '${escaped}' AS _legacy_import`);
+  try {
+    const result = mainDb.prepare(`
+      INSERT OR IGNORE INTO notes (text, created_at, updated_at, completed_at)
+      SELECT text, created_at, updated_at, completed_at
+      FROM _legacy_import.notes AS src
+      WHERE TRIM(src.text) != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM notes n
+          WHERE n.text = src.text AND n.created_at = src.created_at
+        )
+    `).run();
+    console.log('[db] merged', result.changes, 'note(s) from:', legacyPath);
+  } finally {
+    mainDb.exec('DETACH DATABASE _legacy_import');
+  }
+}
 
 function hasCompositeLinkPrimaryKey() {
   const info = getDb().pragma('table_info(note_app_links)');
@@ -53,8 +146,10 @@ function migrateNoteAppLinksToCompositeKey() {
 
 function getDb() {
   if (db) return db;
-  const dbPath = path.join(app.getPath('userData'), 'proactive-recall.db');
+  const dbPath = resolveDbPath();
+  console.log('[db] opening DB at:', dbPath);
   db = new Database(dbPath);
+  _resolvedDbPath = dbPath;
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
@@ -114,6 +209,17 @@ function getDb() {
   `);
 
   migrateLegacy();
+
+  // One-time secondary merge: import non-duplicate notes from any other legacy DBs found at startup.
+  const pending = _pendingSecondaryMerge.splice(0);
+  for (const legacyPath of pending) {
+    try {
+      mergeNotesFromLegacyDb(db, legacyPath);
+    } catch (err) {
+      console.error('[db] secondary merge failed for', legacyPath, ':', err.message);
+    }
+  }
+
   return db;
 }
 
@@ -728,7 +834,13 @@ function recordSurfaced(noteId, appKey) {
     .run(today, nextCount, noteId, appKey);
 }
 
+/** Returns the absolute path of the currently open DB (null until first getDb() call). */
+function getDbPath() {
+  return _resolvedDbPath;
+}
+
 module.exports = {
+  getDbPath,
   createNote,
   updateNote,
   deleteNote,

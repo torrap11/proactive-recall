@@ -188,7 +188,7 @@ function createSearchWindow() {
     width: 760,
     height: 640,
     show: false,
-    title: 'Proactive Recall Search',
+    title: 'Jot Search',
     webPreferences: rendererWebPreferences(),
   });
   searchWin.on('closed', () => {
@@ -530,6 +530,12 @@ function registerIpc() {
 }
 
 app.whenReady().then(() => {
+  // Eagerly open the DB so the resolved path is logged at startup (before any IPC call).
+  console.log('[app] app.getName():', app.getName());
+  console.log('[app] app.getPath(userData):', app.getPath('userData'));
+  db.listFolders(); // triggers getDb() → logs path, runs migration if needed
+  console.log('[app] DB path:', db.getDbPath());
+
   aiOrganize.loadDotenv(app.getPath('userData'));
   createCaptureWindow();
   createSearchWindow();
