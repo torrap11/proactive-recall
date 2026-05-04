@@ -340,12 +340,6 @@ function applyCustomGoalSort(notes) {
   const goalRaw = String(state.customPrompt || '').trim().toLowerCase();
   let filtered = [...notes];
 
-  // Default dashboard view: always show today's notes only (time filtering removed from the prompt).
-  if (state.isDefaultList) {
-    const todayKey = localDayKey(new Date().toISOString());
-    filtered = filtered.filter((note) => localDayKey(note.created_at) === todayKey);
-  }
-
   // Timeline slicing is intentionally limited (time filtering like "last hour"/"tonight" is removed).
   const wantsTimeline = goalRaw.includes('stopped talking about');
 
@@ -401,7 +395,7 @@ function renderResults() {
   const sameLocalDay = state.notes.every(
     (n) => localDayKey(n.created_at) === localDayKey(state.notes[0].created_at)
   );
-  // In default dashboard view, notes are scoped to today; show time-only (hide date).
+  // When not searching, if every visible note shares one local day, show time-only in the list.
   const hideDate = state.isDefaultList && sameLocalDay;
 
   resultsEl.innerHTML = state.notes
