@@ -53,4 +53,10 @@ contextBridge.exposeInMainWorld('mvp', {
   openExternalUrl: (url) => ipcRenderer.invoke('external:open-url', url),
   getActiveApp: () => ipcRenderer.invoke('app:get-active'),
   seedDemo: () => ipcRenderer.invoke('demo:seed'),
+  startDemoMode: () => ipcRenderer.invoke('demo:start-mode'),
+  triggerWorkflowDemo: (workflowId) => ipcRenderer.invoke('demo:trigger-workflow', workflowId),
+  listParticipants: (noteId) => ipcRenderer.invoke('participants:list', noteId),
+  addParticipant: (noteId, participant) => ipcRenderer.invoke('participants:add', noteId, participant),
+  removeParticipant: (noteId, participant) => ipcRenderer.invoke('participants:remove', noteId, participant),
+  quickCaptureMeetingNote: (text, participant) => ipcRenderer.invoke('meeting:quick-capture', text, participant),
 });

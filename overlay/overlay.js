@@ -53,6 +53,11 @@ window.overlay.onShow((payload) => {
   list.forEach((note, idx) => {
     const title = esc((note.text || '').split('\n')[0] || 'Note');
     const snippet = esc((note.text || '').slice(0, 160));
+    const participants = Array.isArray(note.participants) ? note.participants.filter(Boolean) : [];
+    const participantLine = participants.length > 0
+      ? `<div class="note-card-meta">${participants.slice(0, 3).map((p) => `@${esc(p)}`).join(' · ')}</div>`
+      : '';
+    const workflowLabel = note.workflow === 'meeting' ? 'Meeting Context' : 'Engineering Context';
 
     const card = document.createElement('div');
     card.className = 'note-card' + (idx === 0 ? ' focused' : '');
@@ -60,7 +65,9 @@ window.overlay.onShow((payload) => {
     card.style.animationDelay = `${idx * 55}ms`;
     card.innerHTML = `
       <div class="note-card-title">${title}</div>
+      <div class="note-card-badge">${workflowLabel}</div>
       <div class="note-card-snippet">${snippet}</div>
+      ${participantLine}
       <div class="note-card-actions">
         <button type="button" class="action-btn open" data-id="${note.id}">Open <kbd>K</kbd></button>
         <button type="button" class="action-btn snooze" data-id="${note.id}">Snooze 30m <kbd>S</kbd></button>

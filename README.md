@@ -1,19 +1,72 @@
-# Proactive Recall
+# Jot
 
-Proactive Recall is a local-first macOS desktop notes app built with Electron. It watches your frontmost app and surfaces contextually relevant notes, so useful information appears when you need it.
+Jot is a local-first proactive memory layer for macOS. It watches workflow context (frontmost app) and resurfaces the most relevant notes exactly when needed.
 
-## Features
+## Demo-Ready Workflows
 
-- Local-first note storage with SQLite (`better-sqlite3`)
-- Proactive note surfacing based on current/frontmost app
-- Overlay UI for surfaced notes
-- Capture flow for quickly saving notes
-- Interactive folder dashboard (click folders in the diagram to filter the notes list)
-- Prompt-based “view organization” (changes how the notes list is displayed; folder diagram remains in sync)
-- Default notes view is scoped to today; prompts reorganize the list display (folder diagram remains in sync)
-- Keyboard navigation in the notes list (arrow keys move selection; Enter opens a note)
-- AI-assisted folder organization tools (configured via environment/API key)
-- macOS packaging, signing, and notarization support
+### 1) Software Engineer Flow (30s)
+
+Trigger: open VS Code / Cursor / coding context.
+
+What appears automatically:
+- architecture notes
+- bug reminders
+- implementation TODOs
+- API migration context
+
+How to show it:
+1. Click `Start Demo Mode`.
+2. Click `Engineer Flow`.
+3. Overlay pops instantly with coding memory cards.
+4. Click `Open` to jump into the full note editor.
+
+### 2) Meeting / Sales Flow (30s)
+
+Trigger: open Zoom / meeting context.
+
+What appears automatically:
+- agenda and prep notes
+- prior summaries and follow-ups
+- participant-linked context cards
+
+How to show it:
+1. Click `Meeting Flow`.
+2. Overlay shows meeting prep cards.
+3. Use quick capture row to add a meeting note + participant in one action.
+4. Open note and show participant tags in the editor.
+
+## One-Click Demo Mode
+
+- UI button: `Start Demo Mode`
+- Keyboard: `Cmd/Ctrl + Shift + D` cycles seeded demo scenes
+- CLI command:
+
+```bash
+npm run demo:start
+```
+
+This seeds realistic demo data, enables a polished context overlay flow, and opens with immediate showcase value.
+
+## YC Demo Script (Suggested)
+
+Use this exact sequence:
+
+1. "Jot removes manual memory recall during work."
+2. Click `Start Demo Mode`.
+3. Click `Engineer Flow` and show coding context cards.
+4. Click `Meeting Flow` and show prep notes + participant context.
+5. Add a quick meeting note in the capture row to demonstrate zero-friction in-call memory capture.
+6. Close with: "You no longer search for memory. Memory appears when context changes."
+
+## Why this implementation
+
+Before implementation, we reviewed mature ecosystem options:
+- onboarding/tour: Shepherd / TourGuide JS
+- animation: Motion One
+- positioning: Floating UI
+- command palette: electron-command-palette
+
+For this demo branch, we intentionally kept the existing Electron architecture and used native CSS/JS transitions to reduce integration risk and maximize recording stability.
 
 ## Tech Stack
 
@@ -22,91 +75,19 @@ Proactive Recall is a local-first macOS desktop notes app built with Electron. I
 - SQLite (`better-sqlite3`)
 - Electron Builder
 
-## Project Structure
-
-- `app-main.js` - Electron main process entrypoint
-- `preload.js` - Main window preload bridge
-- `database.js` - Local data/storage layer
-- `appWatcher.js` - Frontmost app detection/polling
-- `surfaceEngine.js` - Surfacing logic/cooldown behavior
-- `noteAppScan.js` - Note content scanning/matching
-- `knownApps.js` - Known app metadata/mappings
-- `renderer/` - Main app UI and capture view
-- `overlay/` - Surfacing overlay window UI
-- `tests/` - Node test suite
-- `build/` - Build/signing assets
-- `scripts/notarize.js` - macOS notarization script
-
-## Requirements
-
-- macOS
-- Node.js 18+ (recommended)
-- npm
-
 ## Getting Started
 
-1. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-2. Configure environment:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Then set at minimum:
-
-   - `ANTHROPIC_API_KEY`
-
-3. Start the app:
-
-   ```bash
-   npm start
-   ```
-
-## Configuration
-
-You can configure behavior through `.env` (or the app settings panel), including:
-
-- `PROACTIVE_RECALL_MODEL`
-- `PROACTIVE_RECALL_SURFACING`
-- `PROACTIVE_RECALL_POLL_MS`
-- `PROACTIVE_RECALL_COOLDOWN_MIN`
-- `PROACTIVE_RECALL_DISMISS_MS`
-
-See `.env.example` for the full template.
+```bash
+npm install
+npm start
+```
 
 ## Scripts
 
 - `npm start` - Run app in development
+- `npm run demo:start` - Run with auto demo mode enabled
 - `npm test` - Run tests (`node --test tests/*.js`)
 - `npm run rebuild` - Rebuild native modules
 - `npm run dist` - Build macOS arm64 distribution
 - `npm run dist:universal` - Build macOS universal distribution
 - `npm run dist:signed` - Build signed macOS distribution
-
-## Downloadable Builds (macOS)
-
-`electron-builder` writes distributable artifacts to `dist/`.
-
-After running `npm run dist:universal`, you should find:
-- `dist/Proactive Recall-<version>-universal.dmg`
-- `dist/Proactive Recall-<version>-universal-mac.zip`
-
-## Build and Release (macOS)
-
-- Build configuration is in `package.json` under `build`
-- Entitlements are in `build/entitlements.mac.plist`
-- Notarization hook is `scripts/notarize.js`
-
-## Security Notes
-
-- Never commit real secrets in `.env` or config files.
-- Keep API keys local and private.
-
-## License
-
-MIT

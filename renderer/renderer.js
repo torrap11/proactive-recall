@@ -37,6 +37,9 @@ const editorFolderSelect = document.getElementById('editor-folder-select');
 const appSelect = document.getElementById('app-select');
 const linkBtn = document.getElementById('link-btn');
 const linksEl = document.getElementById('links');
+const participantInputEl = document.getElementById('participant-input');
+const participantAddBtn = document.getElementById('participant-add-btn');
+const participantsEl = document.getElementById('participants');
 const noteImagesEl = document.getElementById('note-images');
 const noteFilesEl = document.getElementById('note-files');
 const imageLightboxEl = document.getElementById('image-lightbox');
@@ -50,6 +53,12 @@ const apiKeyErrorEl = document.getElementById('api-key-error');
 const apiKeySaveBtn = document.getElementById('api-key-save');
 const apiKeyCancelBtn = document.getElementById('api-key-cancel');
 const anthropicKeyLink = document.getElementById('anthropic-key-link');
+const demoStartBtn = document.getElementById('demo-start-btn');
+const demoEngineerBtn = document.getElementById('demo-engineer-btn');
+const demoMeetingBtn = document.getElementById('demo-meeting-btn');
+const meetingQuickNoteInput = document.getElementById('meeting-quick-note-input');
+const meetingParticipantInput = document.getElementById('meeting-participant-input');
+const meetingCaptureBtn = document.getElementById('meeting-capture-btn');
 
 let saveTimer = null;
 
@@ -266,6 +275,7 @@ function closeEditor() {
   editorTextEl.value = '';
   editorFolderSelect.value = 'unfiled';
   linksEl.innerHTML = '';
+  participantsEl.innerHTML = '';
   noteImagesEl.innerHTML = '';
   noteFilesEl.innerHTML = '';
   renderResults();
@@ -533,6 +543,7 @@ async function openNote(noteId) {
   if (saved) applyEditorPanelHeightPx(clampEditorPanelHeightToLayout(saved));
   renderResults();
   await renderLinks();
+  await renderParticipants();
   await renderNoteImages();
   await renderNoteFiles();
   requestAnimationFrame(() => {
@@ -555,6 +566,24 @@ async function renderLinks() {
     .map(
       (appKey) =>
         `<button type="button" class="chip" data-remove="${escapeHtml(appKey)}">${escapeHtml(labelForAppKey(appKey))} ×</button>`
+    )
+    .join('');
+}
+
+async function renderParticipants() {
+  if (!state.activeId) {
+    participantsEl.innerHTML = '';
+    return;
+  }
+  const people = await window.mvp.listParticipants(state.activeId);
+  if (!Array.isArray(people) || people.length === 0) {
+    participantsEl.innerHTML = '';
+    return;
+  }
+  participantsEl.innerHTML = people
+    .map(
+      (person) =>
+        `<button type="button" class="chip" data-remove-participant="${escapeHtml(person)}">@${escapeHtml(person)} ×</button>`
     )
     .join('');
 }
@@ -813,6 +842,44 @@ deleteSelectedBtn.addEventListener('click', () => {
   void removeSelectedNotes();
 });
 
+demoStartBtn?.addEventListener('click', async () => {
+  await window.mvp.startDemoMode();
+  await runQuery(queryInput.value.trim());
+  await window.mvp.triggerWorkflowDemo('engineering');
+});
+
+demoEngineerBtn?.addEventListener('click', async () => {
+  await window.mvp.triggerWorkflowDemo('engineering');
+});
+
+demoMeetingBtn?.addEventListener('click', async () => {
+  await window.mvp.triggerWorkflowDemo('meeting');
+});
+
+meetingCaptureBtn?.addEventListener('click', async () => {
+  const text = String(meetingQuickNoteInput?.value || '').trim();
+  const participant = String(meetingParticipantInput?.value || '').trim();
+  if (!text) return;
+  const created = await window.mvp.quickCaptureMeetingNote(text, participant);
+  if (!created) return;
+  if (meetingQuickNoteInput) meetingQuickNoteInput.value = '';
+  if (meetingParticipantInput) meetingParticipantInput.value = '';
+  await runQuery(queryInput.value.trim());
+  await openNote(created.id);
+});
+
+meetingQuickNoteInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  meetingCaptureBtn?.click();
+});
+
+meetingParticipantInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  meetingCaptureBtn?.click();
+});
+
 async function submitAppLink() {
   const appKey = await window.mvp.resolveAppKey(appSelect.value);
   if (!appKey || !state.activeId) return;
@@ -823,6 +890,16 @@ async function submitAppLink() {
   appSelect.value = '';
   await renderLinks();
   appSelect.focus();
+}
+
+async function submitParticipant() {
+  if (!state.activeId || !participantInputEl) return;
+  const raw = String(participantInputEl.value || '').trim();
+  if (!raw) return;
+  await window.mvp.addParticipant(state.activeId, raw);
+  participantInputEl.value = '';
+  await renderParticipants();
+  participantInputEl.focus();
 }
 
 function fileToDataUrl(file) {
@@ -852,6 +929,17 @@ appSelect.addEventListener('keydown', (event) => {
   event.preventDefault();
   event.stopPropagation();
   void submitAppLink();
+});
+
+participantAddBtn?.addEventListener('click', () => {
+  void submitParticipant();
+});
+
+participantInputEl?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  event.stopPropagation();
+  void submitParticipant();
 });
 
 editorFolderSelect.addEventListener('change', async () => {
@@ -906,6 +994,15 @@ linksEl.addEventListener('click', async (event) => {
   const after = await window.mvp.getLinks(state.activeId);
   pushLinkHistoryEntry(state.activeId, before, after);
   await renderLinks();
+});
+
+participantsEl?.addEventListener('click', async (event) => {
+  const chip = event.target.closest('.chip');
+  if (!chip || !state.activeId) return;
+  const participant = String(chip.dataset.removeParticipant || '').trim();
+  if (!participant) return;
+  await window.mvp.removeParticipant(state.activeId, participant);
+  await renderParticipants();
 });
 
 noteImagesEl.addEventListener('click', async (event) => {
@@ -1174,6 +1271,7 @@ window.mvp.onNotesChanged(() => {
   void runQuery(queryInput.value.trim());
   if (state.activeId != null) {
     void renderLinks();
+    void renderParticipants();
     void renderNoteImages();
   }
 });

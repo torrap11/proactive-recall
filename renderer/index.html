@@ -12,6 +12,18 @@
     <div class="search-toolbar">
       <input id="query" type="search" placeholder="Search notes..." autofocus />
     </div>
+    <section class="demo-controls" aria-label="Demo controls">
+      <div class="demo-buttons">
+        <button id="demo-start-btn" type="button">Start Demo Mode</button>
+        <button id="demo-engineer-btn" type="button">Engineer Flow</button>
+        <button id="demo-meeting-btn" type="button">Meeting Flow</button>
+      </div>
+      <div class="meeting-capture-row">
+        <input id="meeting-quick-note-input" type="text" placeholder="Quick meeting note..." />
+        <input id="meeting-participant-input" type="text" placeholder="Participant (optional)" />
+        <button id="meeting-capture-btn" type="button">Capture</button>
+      </div>
+    </section>
     <section id="folder-diagram" class="folder-diagram" aria-label="Folder structure diagram">
       <div class="folder-diagram-header">
         <span class="folder-diagram-title">Folder structure diagram</span>
@@ -63,6 +75,11 @@
           />
           <button id="link-btn" type="button">Link</button>
         </div>
+        <div class="participant-row">
+          <input id="participant-input" type="text" placeholder="Tag participant..." aria-label="Tag participant" />
+          <button id="participant-add-btn" type="button">Add</button>
+        </div>
+        <div id="participants"></div>
         <div id="links"></div>
       </section>
     </div>

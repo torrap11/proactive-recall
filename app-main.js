@@ -381,6 +381,35 @@ function triggerDemoScene(index) {
   }
 }
 
+function startDemoMode() {
+  demoMode = true;
+  demoSceneIndex = 0;
+  const seeded = db.seedDemoData();
+  notifySearchNotesChanged();
+  return seeded;
+}
+
+function triggerWorkflowDemo(workflowId) {
+  const isMeeting = workflowId === 'meeting';
+  const scene = isMeeting
+    ? { appKey: 'us.zoom.xos', appName: 'Zoom' }
+    : { appKey: 'com.microsoft.VSCode', appName: 'Visual Studio Code' };
+  const picked = surface.pickSurfacedNotes({
+    bundleId: scene.appKey,
+    appName: scene.appName,
+    db,
+    catalog: KNOWN_APPS,
+    limit: APP_CONFIG.maxSurfacedNotes,
+    recentTransitions: [],
+  });
+  lastSurfaceAt = 0;
+  lastSurfaceAppKey = '';
+  if (picked.notes.length > 0) {
+    showOverlay(scene.appKey, picked.notes, scene.appName);
+  }
+  return { workflowId: isMeeting ? 'meeting' : 'engineering', notes: picked.notes.length };
+}
+
 function showOverlay(appKey, notes, appNameOverride) {
   if (!notes || notes.length === 0) return;
   const now = Date.now();
@@ -398,7 +427,13 @@ function showOverlay(appKey, notes, appNameOverride) {
   const payload = {
     appKey,
     appName: appNameOverride || BUNDLE_ID_TO_NAME[appKey] || appKey,
-    notes: notes.map((note) => ({ id: note.id, text: note.text })),
+    notes: notes.map((note) => ({
+      id: note.id,
+      text: note.text,
+      participants: db.listParticipantsForNote(note.id),
+      workflow:
+        appKey === 'us.zoom.xos' || appKey === 'com.apple.mail' ? 'meeting' : 'engineering',
+    })),
     autoDismissMs: APP_CONFIG.overlayDismissMs,
   };
   const send = () => {
@@ -420,10 +455,7 @@ function registerShortcuts() {
   globalShortcut.register('CommandOrControl+P', () => showSearchWindow());
   globalShortcut.register('CommandOrControl+Shift+D', () => {
     if (!demoMode) {
-      demoMode = true;
-      demoSceneIndex = 0;
-      db.seedDemoData();
-      notifySearchNotesChanged();
+      startDemoMode();
     }
     triggerDemoScene(demoSceneIndex);
     demoSceneIndex++;
@@ -632,6 +664,30 @@ function buildAppMenu() {
     {
       label: 'Window',
       submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }],
+    },
+    {
+      label: 'Demo',
+      submenu: [
+        {
+          label: 'Start Demo Mode',
+          accelerator: 'CommandOrControl+Shift+M',
+          click: () => {
+            startDemoMode();
+          },
+        },
+        {
+          label: 'Trigger Engineer Workflow',
+          click: () => {
+            triggerWorkflowDemo('engineering');
+          },
+        },
+        {
+          label: 'Trigger Meeting Workflow',
+          click: () => {
+            triggerWorkflowDemo('meeting');
+          },
+        },
+      ],
     },
   ];
   if (process.platform === 'darwin') {
@@ -900,9 +956,24 @@ function registerIpc() {
   }));
 
   ipcMain.handle('demo:seed', async () => {
-    const result = db.seedDemoData();
+    return startDemoMode();
+  });
+  ipcMain.handle('demo:start-mode', async () => startDemoMode());
+  ipcMain.handle('demo:trigger-workflow', async (_event, workflowId) => triggerWorkflowDemo(String(workflowId || 'engineering')));
+  ipcMain.handle('participants:list', (_event, noteId) => db.listParticipantsForNote(noteId));
+  ipcMain.handle('participants:add', (_event, noteId, participant) => db.addParticipantToNote(noteId, participant));
+  ipcMain.handle('participants:remove', (_event, noteId, participant) => db.removeParticipantFromNote(noteId, participant));
+  ipcMain.handle('meeting:quick-capture', (_event, text, participant) => {
+    const body = String(text || '').trim();
+    const person = String(participant || '').trim();
+    if (!body) return null;
+    const finalText = person ? `[Meeting] ${body}\nParticipant: ${person}` : `[Meeting] ${body}`;
+    const note = db.createNote(finalText);
+    if (!note) return null;
+    db.linkNoteToApp(note.id, 'us.zoom.xos');
+    if (person) db.addParticipantToNote(note.id, person);
     notifySearchNotesChanged();
-    return result;
+    return note;
   });
 
   ipcMain.handle('ai:organize-chat', async (_event, payload) => {
@@ -1022,6 +1093,10 @@ app.whenReady().then(async () => {
   registerShortcuts();
   registerIpc();
   startWatcher();
+  if (process.env.JOT_AUTO_DEMO === '1') {
+    startDemoMode();
+    triggerWorkflowDemo('engineering');
+  }
   const hadFirstLaunchOnboarding = await maybeShowFirstLaunchChoice();
   await maybePromptFirstLaunchApiKeySetup(hadFirstLaunchOnboarding);
 });

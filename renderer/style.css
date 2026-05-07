@@ -139,6 +139,40 @@ body {
   min-width: 0;
 }
 
+.demo-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.demo-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meeting-capture-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+#meeting-quick-note-input,
+#meeting-participant-input,
+#participant-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--elevated);
+  color: var(--text);
+  padding: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
 #import-db-btn,
 #export-db-btn {
   flex: 0 0 auto;
@@ -706,6 +740,11 @@ button.folder-node:hover {
 #attach-image-btn,
 #attach-image-capture-btn,
 #attach-file-capture-btn,
+#participant-add-btn,
+#demo-start-btn,
+#demo-engineer-btn,
+#demo-meeting-btn,
+#meeting-capture-btn,
 #new-folder-btn,
 #import-db-btn,
 #export-db-btn,
@@ -732,6 +771,17 @@ button.folder-node:hover {
 #link-btn:hover,
 .chip:hover {
   background: var(--button-bg-hover);
+}
+
+.participant-row {
+  display: flex;
+  gap: 8px;
+}
+
+#participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .btn-danger {

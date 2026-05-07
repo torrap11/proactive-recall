@@ -338,6 +338,12 @@ function getDb() {
       timestamp TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS note_participants (
+      note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      participant TEXT NOT NULL COLLATE NOCASE,
+      PRIMARY KEY (note_id, participant)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_surface_events_note ON surface_events(note_id);
     CREATE INDEX IF NOT EXISTS idx_surface_events_app ON surface_events(app_key, event_type);
   `);
@@ -726,6 +732,38 @@ function setNoteFolder(noteId, folderId) {
 
   getDb().prepare('UPDATE notes SET folder_id = NULL, updated_at = datetime(\'now\') WHERE id = ?').run(nid);
   return getNote(nid);
+}
+
+function listParticipantsForNote(noteId) {
+  const nid = Number(noteId);
+  if (!Number.isFinite(nid) || nid < 1) return [];
+  return getDb()
+    .prepare('SELECT participant FROM note_participants WHERE note_id = ? ORDER BY lower(participant) ASC')
+    .all(nid)
+    .map((row) => String(row.participant || '').trim())
+    .filter(Boolean);
+}
+
+function addParticipantToNote(noteId, participant) {
+  const nid = Number(noteId);
+  const value = normalizeText(participant);
+  if (!Number.isFinite(nid) || nid < 1) return listParticipantsForNote(noteId);
+  if (!value) return listParticipantsForNote(noteId);
+  getDb()
+    .prepare('INSERT OR IGNORE INTO note_participants (note_id, participant) VALUES (?, ?)')
+    .run(nid, value);
+  return listParticipantsForNote(nid);
+}
+
+function removeParticipantFromNote(noteId, participant) {
+  const nid = Number(noteId);
+  const value = normalizeText(participant);
+  if (!Number.isFinite(nid) || nid < 1) return listParticipantsForNote(noteId);
+  if (!value) return listParticipantsForNote(noteId);
+  getDb()
+    .prepare('DELETE FROM note_participants WHERE note_id = ? AND participant = ?')
+    .run(nid, value);
+  return listParticipantsForNote(nid);
 }
 
 function getNoteOnlyLinksForNote(noteId) {
@@ -1216,21 +1254,16 @@ const DEMO_SCENES = [
 ];
 
 const DEMO_SEED_NOTES = [
-  { text: 'Fix overlay animation jank before demo — repro: switch apps 10x rapidly', appKey: 'com.microsoft.VSCode' },
-  { text: 'Perf goal: overlay must appear in <300ms from app switch', appKey: 'com.microsoft.VSCode' },
-  { text: 'TODO: keyboard shortcut guide in overlay (K open · S snooze · D dismiss)', appKey: 'com.microsoft.VSCode' },
-  { text: 'YC partner meeting tomorrow 10am — review retention metrics beforehand', appKey: 'com.tinyspeck.slackmacgap' },
-  { text: 'Ask team: "proactive memory" vs "context engine" — which framing lands better?', appKey: 'com.tinyspeck.slackmacgap' },
-  { text: 'Send Priya the onboarding flow mockups before EOD', appKey: 'com.tinyspeck.slackmacgap' },
-  { text: 'Key insight from Superhuman research: users value "feel smart" over "save time"', appKey: 'com.google.Chrome' },
-  { text: 'Competitor note: Rewind stores everything, we surface what matters — core diff', appKey: 'com.google.Chrome' },
-  { text: 'YC essay draft — finish retention section before Monday office hours', appKey: 'com.google.Chrome' },
-  { text: 'YC partners to know: Dalton Caldwell (cares about retention), Jared Friedman (AI tools)', appKey: 'us.zoom.xos' },
-  { text: 'Key metrics: 40% D7 retention · 8 captures/day avg · 3min avg session', appKey: 'us.zoom.xos' },
-  { text: 'Demo flow: capture note → switch app → overlay fires → open note → ~45s total', appKey: 'us.zoom.xos' },
-  { text: 'Reply to Series A interest — warm intro from Garry Tan, respond by Thursday', appKey: 'com.apple.mail' },
-  { text: 'User interview follow-up: David (Figma PM) had strong signal on knowledge worker pain', appKey: 'com.apple.mail' },
-  { text: 'YC application confirm deadline is this Friday — do not miss this', appKey: 'com.apple.mail' },
+  { text: 'API edge-case: oauth callback fails when state payload exceeds 2KB', appKey: 'com.microsoft.VSCode' },
+  { text: 'TODO before deploy: add retry/backoff around sync API and bump timeout to 8s', appKey: 'com.microsoft.VSCode' },
+  { text: 'Debug note: auth bug only reproduces with stale local session from previous branch', appKey: 'com.microsoft.VSCode' },
+  { text: 'Architecture context: capture -> SQLite -> surface engine -> overlay, keep this slide concise', appKey: 'com.google.Chrome' },
+  { text: 'Docs link to open while coding: API v2 migration checklist + schema notes', appKey: 'com.google.Chrome' },
+  { text: 'Meeting prep: ACME pilot kickoff agenda (success metrics, timeline, blockers)', appKey: 'us.zoom.xos', participants: ['Ava Patel', 'Liam Chen'] },
+  { text: 'Prior summary: ACME asked for SOC2 roadmap and SSO timeline, follow up today', appKey: 'us.zoom.xos', participants: ['Ava Patel', 'Jordan Kim'] },
+  { text: 'Sales context: Expansion opportunity depends on reducing onboarding time under 10 min', appKey: 'us.zoom.xos', participants: ['Jordan Kim'] },
+  { text: 'Post-meeting action items draft for ACME + owner assignments', appKey: 'com.apple.mail', participants: ['Ava Patel', 'Jordan Kim', 'Liam Chen'] },
+  { text: 'Customer call reminder: open case study deck and pricing one-pager before joining', appKey: 'us.zoom.xos', participants: ['Maya Singh'] },
 ];
 
 function seedDemoData() {
@@ -1243,6 +1276,7 @@ function seedDemoData() {
 
   const insertNote = database.prepare("INSERT INTO notes (text, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))");
   const insertLink = database.prepare('INSERT OR IGNORE INTO note_app_links (note_id, app_key) VALUES (?, ?)');
+  const insertParticipant = database.prepare('INSERT OR IGNORE INTO note_participants (note_id, participant) VALUES (?, ?)');
 
   const seed = database.transaction(() => {
     deleteLinks.run(...texts);
@@ -1250,6 +1284,9 @@ function seedDemoData() {
     for (const note of DEMO_SEED_NOTES) {
       const info = insertNote.run(note.text);
       insertLink.run(info.lastInsertRowid, note.appKey);
+      for (const person of note.participants || []) {
+        insertParticipant.run(info.lastInsertRowid, String(person || '').trim());
+      }
     }
   });
 
@@ -1301,6 +1338,9 @@ module.exports = {
   recordSurfaceEvent,
   recordSurfaceEventBatch,
   getNoteSurfaceScore,
+  listParticipantsForNote,
+  addParticipantToNote,
+  removeParticipantFromNote,
   seedDemoData,
   snoozeNote,
   dismissNote,
