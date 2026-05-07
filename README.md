@@ -13,6 +13,10 @@ Jot is a local-first proactive memory layer for macOS. It watches workflow conte
 - SQLite (`better-sqlite3`)
 - Electron Builder
 
+## Download
+
+**macOS (Apple Silicon + Intel):** get the universal `.dmg` from **[Latest release](https://github.com/parthha12/jot/releases/latest)** (matches the **`main`** branch).
+
 ## Getting Started
 
 ```bash
