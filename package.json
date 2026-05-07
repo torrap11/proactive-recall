@@ -5,7 +5,6 @@
   "main": "app-main.js",
   "scripts": {
     "start": "electron .",
-    "demo:start": "JOT_AUTO_DEMO=1 electron .",
     "seed:screenshot": "JOT_SEED_SCREENSHOT=1 electron .",
     "test": "node --test tests/*.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",

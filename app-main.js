@@ -661,30 +661,6 @@ function buildAppMenu() {
       label: 'Window',
       submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }],
     },
-    {
-      label: 'Demo',
-      submenu: [
-        {
-          label: 'Start Demo Mode',
-          accelerator: 'CommandOrControl+Shift+M',
-          click: () => {
-            startDemoMode();
-          },
-        },
-        {
-          label: 'Trigger Engineer Workflow',
-          click: () => {
-            triggerWorkflowDemo('engineering');
-          },
-        },
-        {
-          label: 'Trigger Meeting Workflow',
-          click: () => {
-            triggerWorkflowDemo('meeting');
-          },
-        },
-      ],
-    },
   ];
   if (process.platform === 'darwin') {
     template.unshift({
@@ -951,11 +927,6 @@ function registerIpc() {
     appName: BUNDLE_ID_TO_NAME[lastSurfaceAppKey] || lastSurfaceAppKey || '',
   }));
 
-  ipcMain.handle('demo:seed', async () => {
-    return startDemoMode();
-  });
-  ipcMain.handle('demo:start-mode', async () => startDemoMode());
-  ipcMain.handle('demo:trigger-workflow', async (_event, workflowId) => triggerWorkflowDemo(String(workflowId || 'engineering')));
   ipcMain.handle('participants:list', (_event, noteId) => db.listParticipantsForNote(noteId));
   ipcMain.handle('participants:add', (_event, noteId, participant) => db.addParticipantToNote(noteId, participant));
   ipcMain.handle('participants:remove', (_event, noteId, participant) => db.removeParticipantFromNote(noteId, participant));
