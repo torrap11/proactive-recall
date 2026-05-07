@@ -101,17 +101,14 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow-y: auto;
   padding: 12px;
   gap: 12px;
 }
 
 /* List + editor share remaining viewport height so the editor is not pushed off-screen. */
 .search-content {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: block;
 }
 
 #query {
@@ -136,40 +133,6 @@ body {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  min-width: 0;
-}
-
-.demo-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
-}
-
-.demo-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.meeting-capture-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
-#meeting-quick-note-input,
-#meeting-participant-input,
-#participant-input {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--elevated);
-  color: var(--text);
-  padding: 8px;
-  font-size: 12px;
   min-width: 0;
 }
 
@@ -525,56 +488,14 @@ button.folder-node:hover {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--elevated);
-  overflow: auto;
+  overflow: visible;
   min-height: 120px;
-  flex: 1 1 auto;
+  margin-bottom: 12px;
 }
 
 .search-shell.editor-open #results {
   flex: 1 1 auto;
   min-height: 120px;
-}
-
-.editor-resizer {
-  height: 10px;
-  border-radius: 10px;
-  background: transparent;
-  position: relative;
-  cursor: ns-resize;
-  flex: 0 0 auto;
-  user-select: none;
-}
-
-.editor-resizer.hidden {
-  display: none;
-}
-
-.editor-resizer::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 1px;
-  background: var(--separator);
-}
-
-.editor-resizer::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 44px;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.editor-resizer:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .result-row {
@@ -701,7 +622,10 @@ button.folder-node:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
 }
 
 #editor.hidden {
@@ -709,10 +633,10 @@ button.folder-node:hover {
 }
 
 .search-shell.editor-open #editor {
-  flex: 0 0 var(--editor-panel-height, 52vh);
+  flex: 0 0 auto;
   min-height: 200px;
-  max-height: calc(100% - 120px);
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .search-shell.editor-open #editor > *:not(#editor-text) {
@@ -740,11 +664,6 @@ button.folder-node:hover {
 #attach-image-btn,
 #attach-image-capture-btn,
 #attach-file-capture-btn,
-#participant-add-btn,
-#demo-start-btn,
-#demo-engineer-btn,
-#demo-meeting-btn,
-#meeting-capture-btn,
 #new-folder-btn,
 #import-db-btn,
 #export-db-btn,
@@ -773,16 +692,6 @@ button.folder-node:hover {
   background: var(--button-bg-hover);
 }
 
-.participant-row {
-  display: flex;
-  gap: 8px;
-}
-
-#participants {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 
 .btn-danger {
   border-color: var(--danger-border);

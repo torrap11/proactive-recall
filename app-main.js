@@ -454,11 +454,7 @@ function hideOverlay() {
 function registerShortcuts() {
   globalShortcut.register('CommandOrControl+P', () => showSearchWindow());
   globalShortcut.register('CommandOrControl+Shift+D', () => {
-    if (!demoMode) {
-      startDemoMode();
-    }
-    triggerDemoScene(demoSceneIndex);
-    demoSceneIndex++;
+    triggerWorkflowDemo('engineering');
   });
 }
 
@@ -1093,10 +1089,7 @@ app.whenReady().then(async () => {
   registerShortcuts();
   registerIpc();
   startWatcher();
-  if (process.env.JOT_AUTO_DEMO === '1') {
-    startDemoMode();
-    triggerWorkflowDemo('engineering');
-  }
+  startDemoMode();
   const hadFirstLaunchOnboarding = await maybeShowFirstLaunchChoice();
   await maybePromptFirstLaunchApiKeySetup(hadFirstLaunchOnboarding);
 });
