@@ -174,6 +174,27 @@ function focusListRow(noteId) {
   });
 }
 
+function getFolderNavButtons() {
+  if (!folderDiagramTreeEl) return [];
+  return [...folderDiagramTreeEl.querySelectorAll('.folder-node[data-folder-filter]')];
+}
+
+function focusFolderNavButton(filterValue) {
+  const want = String(filterValue ?? 'all');
+  requestAnimationFrame(() => {
+    const nodes = getFolderNavButtons();
+    if (!nodes.length) return;
+    const hit = nodes.find((el) => String(el.dataset.folderFilter || 'all') === want) ?? nodes[0];
+    hit.focus();
+  });
+}
+
+async function applyFolderFilterFromNav(newFilter) {
+  state.folderFilter = newFilter;
+  await runQuery(queryInput.value.trim());
+  focusFolderNavButton(state.folderFilter);
+}
+
 function updateBulkActionsUi() {
   const count = state.selectedIds.size;
   selectedCountEl.textContent = `${count} selected`;
@@ -340,6 +361,36 @@ folderDiagramEl?.addEventListener('click', (event) => {
   state.folderFilter = btn.dataset.folderFilter || 'all';
   void runQuery(queryInput.value.trim());
 });
+
+folderDiagramTreeEl?.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const btn = event.target?.closest?.('.folder-node[data-folder-filter]');
+    if (!btn || !folderDiagramTreeEl.contains(btn)) return;
+    const nodes = getFolderNavButtons();
+    const i = nodes.indexOf(btn);
+    if (i < 0) return;
+    const j = event.key === 'ArrowDown' ? i + 1 : i - 1;
+    if (j < 0 || j >= nodes.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'ArrowUp' && i === 0) queryInput.focus();
+      else if (event.key === 'ArrowDown' && i === nodes.length - 1 && state.notes.length > 0) {
+        state.listFocusId = state.notes[0].id;
+        renderResults();
+        focusListRow(state.listFocusId);
+      }
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const nextFilter = nodes[j].dataset.folderFilter || 'all';
+    void applyFolderFilterFromNav(nextFilter);
+  },
+  true
+);
 
 newFolderBtn?.addEventListener('click', () => {
   void (async () => {
@@ -594,6 +645,8 @@ queryInput.addEventListener('keydown', (event) => {
     if (i <= 0) {
       state.listFocusId = null;
       renderResults();
+      const folderNodes = getFolderNavButtons();
+      if (folderNodes.length) focusFolderNavButton(state.folderFilter);
     } else {
       state.listFocusId = state.notes[i - 1].id;
       renderResults();
@@ -649,7 +702,9 @@ resultsEl.addEventListener(
       } else {
         state.listFocusId = null;
         renderResults();
-        queryInput.focus();
+        const folderNodes = getFolderNavButtons();
+        if (folderNodes.length) focusFolderNavButton(state.folderFilter);
+        else queryInput.focus();
       }
       return;
     }
@@ -931,6 +986,8 @@ document.addEventListener('keydown', (event) => {
   // Arrow key navigation through note list (prevent default scrolling).
   if (!isTypingTarget(event.target) && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
+    // Folder tree uses its own capture handler; if focus is on a folder nav button, do not move the note list.
+    if (event.target?.closest?.('#folder-diagram-tree .folder-node[data-folder-filter]')) return;
     // Let the dedicated `#results` keyboard handler run when we're already interacting with a row.
     if (event.target?.closest?.('#results')) return;
     if (state.notes.length > 0) {
@@ -949,7 +1006,9 @@ document.addEventListener('keydown', (event) => {
         if (i <= 0) {
           state.listFocusId = null;
           renderResults();
-          queryInput.focus();
+          const folderNodes = getFolderNavButtons();
+          if (folderNodes.length) focusFolderNavButton(state.folderFilter);
+          else queryInput.focus();
         } else {
           state.listFocusId = state.notes[i - 1].id;
           renderResults();
