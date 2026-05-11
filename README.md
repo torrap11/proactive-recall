@@ -2,6 +2,8 @@
 
 Jot is a local-first proactive memory layer for macOS. It watches workflow context (frontmost app) and resurfaces the most relevant notes in a corner overlay when you switch apps. Notes and attachments stay on disk (SQLite); optional Anthropic-powered helpers can organize folders or suggest what to do from your notes after you add an API key.
 
+**[Jot Launch](https://github.com/parthha12/jot/releases/tag/jot-launch)** — Named source milestone for v2 (app **2.0.0**). The [`jot-launch`](https://github.com/parthha12/jot/releases/tag/jot-launch) tag points at the fork-ready `main` snapshot (MIT `LICENSE`, contributor hygiene). Installable macOS builds: **[Releases](https://github.com/parthha12/jot/releases/latest)** (`Jot-2.0.0.dmg`).
+
 **Shortcuts:** ⌘P (⌃P) opens search from anywhere. ⌘N opens capture from the main window.
 
 ## Tech Stack
