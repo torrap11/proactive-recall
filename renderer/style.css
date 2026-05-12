@@ -451,6 +451,25 @@ button.folder-node:hover {
   cursor: pointer;
 }
 
+.folder-rename-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.folder-rename-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .folder-delete-btn:hover {
   color: var(--danger-muted);
   background: var(--danger-bg);
@@ -1004,6 +1023,10 @@ button.folder-node:hover {
 .modal-input:focus {
   outline: none;
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.new-folder-name-field {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .modal-error {

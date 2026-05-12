@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('mvp', {
   listFolders: () => ipcRenderer.invoke('folders:list'),
   getFolderDiagram: () => ipcRenderer.invoke('folders:diagram'),
   createFolder: (name) => ipcRenderer.invoke('folders:create', name),
+  renameFolder: (folderId, name) => ipcRenderer.invoke('folders:rename', folderId, name),
   deleteFolder: (folderId) => ipcRenderer.invoke('folders:delete', folderId),
   listApps: () => ipcRenderer.invoke('apps:list'),
   importDbFromPicker: () => ipcRenderer.invoke('db:import-from-picker'),

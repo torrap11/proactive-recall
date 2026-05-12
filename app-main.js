@@ -903,6 +903,11 @@ function registerIpc() {
     if (folder) notifySearchNotesChanged();
     return folder;
   });
+  ipcMain.handle('folders:rename', (_event, folderId, name) => {
+    const folder = db.renameFolder(folderId, name);
+    if (folder) notifySearchNotesChanged();
+    return folder;
+  });
   ipcMain.handle('folders:delete', (_event, folderId) => {
     const ok = db.deleteFolder(folderId);
     if (ok) notifySearchNotesChanged();

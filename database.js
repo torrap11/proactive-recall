@@ -708,6 +708,24 @@ function createFolder(name) {
 }
 
 /**
+ * @param {string|number} folderId
+ * @param {string} newName
+ * @returns {{ id: number, name: string, created_at: string } | null}
+ */
+function renameFolder(folderId, newName) {
+  const parsed = parseFolderFilter(folderId);
+  if (parsed.mode !== 'folder') return null;
+  const fid = parsed.id;
+  const value = normalizeText(newName);
+  if (!value) return null;
+  const row = getDb().prepare('SELECT id, name, created_at FROM folders WHERE id = ?').get(fid);
+  if (!row) return null;
+  if (row.name === value) return row;
+  getDb().prepare('UPDATE folders SET name = ? WHERE id = ?').run(value, fid);
+  return getDb().prepare('SELECT id, name, created_at FROM folders WHERE id = ?').get(fid);
+}
+
+/**
  * Removes a folder and moves any notes in it to Unfiled (same semantics as setNoteFolder(..., 'unfiled')).
  * @param {string|number} folderId
  * @returns {boolean}
@@ -1205,6 +1223,7 @@ module.exports = {
   pruneEmptyFolders,
   getFolderDiagram,
   createFolder,
+  renameFolder,
   deleteFolder,
   setNoteFolder,
   linkNoteToApp,

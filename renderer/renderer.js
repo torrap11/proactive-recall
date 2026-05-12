@@ -21,6 +21,21 @@ const aiKeyAccessBtn = document.getElementById('ai-key-access-btn');
 const folderDiagramEl = document.getElementById('folder-diagram');
 const folderDiagramTreeEl = document.getElementById('folder-diagram-tree');
 const newFolderBtn = document.getElementById('new-folder-btn');
+const newFolderModal = document.getElementById('new-folder-modal');
+const newFolderNameInput = document.getElementById('new-folder-name-input');
+const newFolderErrorEl = document.getElementById('new-folder-error');
+const newFolderCancelBtn = document.getElementById('new-folder-cancel');
+const newFolderCreateBtn = document.getElementById('new-folder-create');
+const newFolderModalTitleEl = document.getElementById('new-folder-modal-title');
+const newFolderModalHintEl = document.getElementById('new-folder-modal-hint');
+
+const FOLDER_DIALOG_HINT_CREATE =
+  'Choose a short name. You can move notes into this folder from the note editor.';
+const FOLDER_DIALOG_HINT_RENAME =
+  'Notes stay in this folder. Only the label in the diagram and editor changes.';
+
+/** When non-null, the folder name dialog is renaming this folder id instead of creating. */
+let folderNameDialogRenameTargetId = null;
 const bulkActionsEl = document.getElementById('bulk-actions');
 const selectedCountEl = document.getElementById('selected-count');
 const deleteSelectedBtn = document.getElementById('delete-selected-btn');
@@ -291,6 +306,7 @@ function renderFolderDiagramHtml(diagram) {
       const count = Number(folder.noteCount) || 0;
       const active = String(state.folderFilter) === String(folder.id) ? ' active' : '';
       const deleteTitle = escapeAttr(`Delete folder “${folder.name}”. Notes become Unfiled.`);
+      const renameTitle = escapeAttr(`Rename folder “${folder.name}”`);
       items.push(`
         <div class="folder-diagram-row">
           <button type="button" class="folder-node${active}" data-folder-filter="${folder.id}">
@@ -298,6 +314,7 @@ function renderFolderDiagramHtml(diagram) {
             <span class="folder-node-name">${escapeHtml(folder.name)}</span>
             <span class="folder-node-count">(${count})</span>
           </button>
+          <button type="button" class="folder-rename-btn" data-folder-rename="${folder.id}" title="${renameTitle}" aria-label="Rename folder">✎</button>
           <button type="button" class="folder-delete-btn" data-folder-delete="${folder.id}" title="${deleteTitle}" aria-label="Delete folder">×</button>
         </div>
       `);
@@ -348,6 +365,14 @@ async function deleteFolderFromUi(folderId) {
 }
 
 folderDiagramEl?.addEventListener('click', (event) => {
+  const renameBtn = event.target.closest('[data-folder-rename]');
+  if (renameBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rawId = renameBtn.getAttribute('data-folder-rename');
+    showRenameFolderModal(rawId);
+    return;
+  }
   const delBtn = event.target.closest('[data-folder-delete]');
   if (delBtn) {
     event.preventDefault();
@@ -392,17 +417,127 @@ folderDiagramTreeEl?.addEventListener(
   true
 );
 
-newFolderBtn?.addEventListener('click', () => {
-  void (async () => {
-    const name = window.prompt('New folder name:');
-    if (name == null) return;
-    const trimmed = String(name).trim();
-    if (!trimmed) return;
-    const folder = await window.mvp.createFolder(trimmed);
-    if (!folder) return;
+function showNewFolderModal() {
+  if (!newFolderModal || !newFolderNameInput) return;
+  folderNameDialogRenameTargetId = null;
+  if (newFolderModalTitleEl) newFolderModalTitleEl.textContent = 'New folder';
+  if (newFolderModalHintEl) newFolderModalHintEl.textContent = FOLDER_DIALOG_HINT_CREATE;
+  if (newFolderCreateBtn) newFolderCreateBtn.textContent = 'Create';
+  newFolderNameInput.placeholder = 'e.g. Work';
+  newFolderErrorEl?.classList.add('hidden');
+  if (newFolderErrorEl) newFolderErrorEl.textContent = '';
+  newFolderNameInput.value = '';
+  newFolderModal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    newFolderNameInput.focus();
+    newFolderNameInput.select();
+  });
+}
+
+function showRenameFolderModal(folderIdRaw) {
+  if (!newFolderModal || !newFolderNameInput) return;
+  const id = Number(folderIdRaw);
+  if (!Number.isFinite(id) || id < 1) return;
+  const folder = state.folders.find((f) => Number(f.id) === id);
+  if (!folder) return;
+  folderNameDialogRenameTargetId = id;
+  if (newFolderModalTitleEl) newFolderModalTitleEl.textContent = 'Rename folder';
+  if (newFolderModalHintEl) newFolderModalHintEl.textContent = FOLDER_DIALOG_HINT_RENAME;
+  if (newFolderCreateBtn) newFolderCreateBtn.textContent = 'Save';
+  newFolderNameInput.placeholder = '';
+  newFolderErrorEl?.classList.add('hidden');
+  if (newFolderErrorEl) newFolderErrorEl.textContent = '';
+  newFolderNameInput.value = folder.name;
+  newFolderModal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    newFolderNameInput.focus();
+    newFolderNameInput.select();
+  });
+}
+
+function hideNewFolderModal() {
+  folderNameDialogRenameTargetId = null;
+  newFolderModal?.classList.add('hidden');
+}
+
+async function submitFolderNameDialog() {
+  if (!newFolderNameInput) return;
+  const trimmed = newFolderNameInput.value.trim();
+  if (!trimmed) {
+    if (newFolderErrorEl) {
+      newFolderErrorEl.textContent = 'Enter a folder name.';
+      newFolderErrorEl.classList.remove('hidden');
+    }
+    return;
+  }
+  if (newFolderCreateBtn) newFolderCreateBtn.disabled = true;
+  const isRename = folderNameDialogRenameTargetId != null;
+  try {
+    if (isRename) {
+      const folder = await window.mvp.renameFolder(folderNameDialogRenameTargetId, trimmed);
+      if (!folder) {
+        if (newFolderErrorEl) {
+          newFolderErrorEl.textContent = 'Could not rename that folder.';
+          newFolderErrorEl.classList.remove('hidden');
+        }
+        return;
+      }
+    } else {
+      const folder = await window.mvp.createFolder(trimmed);
+      if (!folder) {
+        if (newFolderErrorEl) {
+          newFolderErrorEl.textContent = 'Could not create that folder.';
+          newFolderErrorEl.classList.remove('hidden');
+        }
+        return;
+      }
+    }
+    hideNewFolderModal();
     await loadFolders();
+    if (state.activeId) {
+      const note = await window.mvp.getNote(state.activeId);
+      if (note) {
+        editorFolderSelect.value = note.folder_id == null ? 'unfiled' : String(note.folder_id);
+      }
+    }
     await runQuery(queryInput.value.trim());
-  })();
+  } catch (e) {
+    const msg = String(e && e.message ? e.message : e);
+    const duplicate = /unique|constraint|SQLITE_CONSTRAINT/i.test(msg);
+    if (newFolderErrorEl) {
+      newFolderErrorEl.textContent = duplicate
+        ? 'A folder with that name already exists.'
+        : isRename
+          ? 'Could not rename folder.'
+          : 'Could not create folder.';
+      newFolderErrorEl.classList.remove('hidden');
+    }
+  } finally {
+    if (newFolderCreateBtn) newFolderCreateBtn.disabled = false;
+  }
+}
+
+newFolderBtn?.addEventListener('click', () => {
+  showNewFolderModal();
+});
+
+newFolderCancelBtn?.addEventListener('click', () => {
+  hideNewFolderModal();
+});
+
+newFolderCreateBtn?.addEventListener('click', () => {
+  void submitFolderNameDialog();
+});
+
+newFolderNameInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    void submitFolderNameDialog();
+  }
+});
+
+newFolderModal?.addEventListener('click', (event) => {
+  if (event.target === newFolderModal) hideNewFolderModal();
 });
 
 async function runQuery(text) {
@@ -1049,6 +1184,11 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (event.key === 'Escape') {
+    if (newFolderModal && !newFolderModal.classList.contains('hidden')) {
+      event.preventDefault();
+      hideNewFolderModal();
+      return;
+    }
     if (apiKeyModal && !apiKeyModal.classList.contains('hidden')) {
       event.preventDefault();
       hideApiKeyModal();

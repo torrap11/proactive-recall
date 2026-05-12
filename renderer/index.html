@@ -86,6 +86,28 @@
       </div>
     </div>
   </div>
+  <div id="new-folder-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="new-folder-modal-title">
+    <div class="modal-dialog">
+      <h2 id="new-folder-modal-title" class="modal-title">New folder</h2>
+      <p id="new-folder-modal-hint" class="modal-hint">
+        Choose a short name. You can move notes into this folder from the note editor.
+      </p>
+      <label class="modal-label" for="new-folder-name-input">Folder name</label>
+      <input
+        id="new-folder-name-input"
+        type="text"
+        class="modal-input new-folder-name-field"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="e.g. Work"
+      />
+      <p id="new-folder-error" class="modal-error hidden" role="alert"></p>
+      <div class="modal-actions">
+        <button type="button" id="new-folder-cancel" class="modal-btn secondary">Cancel</button>
+        <button type="button" id="new-folder-create" class="modal-btn primary">Create</button>
+      </div>
+    </div>
+  </div>
   <div id="chat-modal" class="chat-modal hidden" role="dialog" aria-modal="true" aria-label="Ask AI">
     <div class="chat-dialog">
       <div class="chat-header">
