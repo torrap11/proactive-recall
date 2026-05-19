@@ -31,7 +31,7 @@ Design goals reflected in the current app:
 | **Meetings** | Quick-capture can create a `[Meeting]` note, optional participant tag, auto-link to Zoom |
 | **AI (optional)** | With an Anthropic key: **organize** chat (suggest folder moves + apply plan) and **night** chat (suggest a few actions from your notes). No account; keys stored in app user data |
 | **Data portability** | Import/export SQLite DB from the app menu; dedupe helper |
-| **Shortcuts** | **⌘P** (⌃P) opens **search globally**; **⌘N** opens **capture from the main window** (not a second global registration) |
+| **Shortcuts** | **⌘P** (⌃P) opens **search globally**; **⌘N** (⌃N) opens **capture globally** |
 
 macOS **Automation** permission is required for reading the frontmost app (System Events). The app does not scrape URLs, screen, or use OCR for context.
 

@@ -4,7 +4,7 @@ Jot is a local-first proactive memory layer for macOS. It watches workflow conte
 
 **[Jot Launch](https://github.com/parthha12/jot/releases/tag/jot-launch)** — Named source milestone for v2 (app **2.0.0**). The [`jot-launch`](https://github.com/parthha12/jot/releases/tag/jot-launch) tag points at the fork-ready `main` snapshot (MIT `LICENSE`, contributor hygiene). Installable macOS builds: **[Releases](https://github.com/parthha12/jot/releases/latest)** (`Jot-2.0.0.dmg`).
 
-**Shortcuts:** ⌘P (⌃P) opens search from anywhere. ⌘N opens capture from the main window.
+**Shortcuts:** ⌘P (⌃P) opens search from anywhere. ⌘N (⌃N) opens capture from anywhere. In capture, type a workflow like `remind me to … when i open Cursor` and press Enter to save and link to that app.
 
 **Demo:** [Jot walkthrough on YouTube](https://www.youtube.com/watch?v=8iutF9J1JHI)
 

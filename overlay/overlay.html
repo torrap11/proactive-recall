@@ -284,6 +284,61 @@
       color: var(--dim);
     }
     .action-btn.complete:hover { color: var(--success); border-color: var(--success); }
+
+    #command-panel {
+      flex-shrink: 0;
+      border-top: 1px solid var(--glass-border);
+      padding: 8px 10px 10px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    #command-panel.hidden {
+      display: none;
+    }
+
+    #command-label {
+      font-size: 10px;
+      color: var(--dim);
+      margin-bottom: 5px;
+    }
+
+    #command-input {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      padding: 7px 9px;
+      outline: none;
+    }
+
+    #command-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+
+    #command-status {
+      font-size: 10px;
+      color: var(--dim);
+      margin-top: 5px;
+      min-height: 14px;
+      line-height: 1.35;
+    }
+
+    #command-status.is-error {
+      color: #ff8a80;
+    }
+
+    #command-status.is-ok {
+      color: var(--success);
+    }
+
+    .note-card.command-target {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-dim);
+    }
   </style>
 </head>
 <body>
@@ -293,7 +348,7 @@
       <span id="header-label">· relevant notes</span>
     </div>
     <div id="header-right">
-      <span class="kbd-hint">K open · S snooze · D done · Esc close</span>
+      <span class="kbd-hint">dbl-click command · K open · S snooze · D done</span>
       <button id="dismiss-all" title="Dismiss all (Esc)">×</button>
     </div>
   </div>
@@ -301,6 +356,18 @@
     <div id="progress-fill"></div>
   </div>
   <div id="notes-container"></div>
+  <div id="command-panel" class="hidden">
+    <div id="command-label">Command</div>
+    <input
+      id="command-input"
+      type="text"
+      spellcheck="false"
+      autocomplete="off"
+      placeholder="e.g. snooze all reminders 1 hr"
+      aria-label="Overlay command"
+    />
+    <p id="command-status" aria-live="polite"></p>
+  </div>
   <script src="overlay.js"></script>
 </body>
 </html>

@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { parseRemindWorkflowText } = require('./remindWorkflowParser');
 
 /** Parse a dotenv file into a plain object (no process.env mutation). */
 function parseEnvFile(filePath) {
@@ -221,9 +222,59 @@ function applyOrganizePlan(database, plan) {
   return { applied, errors };
 }
 
+const WORKFLOW_SYSTEM = `You convert natural-language workflows for Jot (a macOS proactive memory app) into a reminder that surfaces when the user opens a specific app.
+
+Reply with a single JSON object only (no markdown fences). Shape:
+{"reminderText":"<what to remember or do>","appQuery":"<short macOS app name>"}
+
+appQuery examples: Cursor, Slack, Safari, Zoom, Mail, VS Code.
+
+If the user describes surfacing or reminding on app open, extract the task and app even if phrasing is informal.
+
+If you cannot determine both fields, use: {"error":"<short reason>"}`;
+
+async function interpretRemindWorkflow(userDataDir, rawText) {
+  const trimmed = String(rawText || '').trim();
+  if (!trimmed) return { error: 'Empty workflow.' };
+
+  const local = parseRemindWorkflowText(trimmed);
+  if (local) return local;
+
+  const { apiKey, model } = readAnthropicCredentials(userDataDir);
+  if (!apiKey) {
+    return {
+      error:
+        'Use “remind me to … when i open <App>”, or add an Anthropic API key (toolbar) so Jot can interpret free-form workflows.',
+    };
+  }
+
+  let parsed;
+  try {
+    const text = await callAnthropic({
+      apiKey,
+      model,
+      system: WORKFLOW_SYSTEM,
+      messages: [{ role: 'user', content: trimmed }],
+    });
+    parsed = extractJsonObject(text);
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+
+  if (parsed.error) return { error: String(parsed.error) };
+
+  const reminderText = String(parsed.reminderText || '').trim();
+  const appQuery = String(parsed.appQuery || '').trim();
+  if (!reminderText || !appQuery) {
+    return { error: 'Could not understand that workflow. Try: remind me to … when i open Cursor.' };
+  }
+  return { reminderText, appQuery };
+}
+
 module.exports = {
   readAnthropicCredentials,
   buildOrganizeSnapshot,
   organizeChat,
   applyOrganizePlan,
+  interpretRemindWorkflow,
 };

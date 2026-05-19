@@ -3,13 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
   <title>Capture</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="capture-body">
   <main class="capture-shell">
-    <textarea id="capture-input" placeholder="Type note and press Enter..." autofocus></textarea>
+    <header id="capture-drag-handle" class="capture-titlebar" title="Drag to move">
+      <div class="capture-mode-tabs">
+        <button type="button" id="capture-mode-note" class="capture-mode-btn is-active" data-mode="note">Note</button>
+        <button
+          type="button"
+          id="capture-mode-reminder"
+          class="capture-mode-btn"
+          data-mode="reminder"
+          title="Two-finger tap to set a reminder workflow"
+        >Reminder</button>
+      </div>
+    </header>
+    <p id="capture-workflow-status" class="capture-workflow-status capture-workflow-status--hidden" role="status" aria-live="polite"></p>
+    <textarea id="capture-input" placeholder="Type a note… Enter saves" autofocus></textarea>
     <div class="capture-folder-row folder-row">
       <label for="capture-folder-select">Folder</label>
       <select id="capture-folder-select" aria-label="Save note into folder">
@@ -24,6 +37,7 @@
         aria-label="Link note to app"
       />
     </div>
+    <div id="capture-pending-images" class="capture-pending-images hidden"></div>
     <div class="capture-attach-row">
       <button id="attach-image-capture-btn" type="button">Attach image</button>
       <button id="attach-file-capture-btn" type="button">Attach file</button>

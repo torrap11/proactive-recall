@@ -9,7 +9,7 @@
 </head>
 <body class="search-body">
   <main class="search-shell">
-    <div class="search-toolbar">
+    <div class="search-toolbar jot-window-drag">
       <input id="query" type="search" placeholder="Search notes..." autofocus />
       <button type="button" id="cleanup-notes-btn" title="Deduplicate notes and optionally run AI merge (with API key)">
         Clean DB
@@ -49,6 +49,7 @@
         <div class="folder-row">
           <label for="editor-folder-select">Folder</label>
           <select id="editor-folder-select" aria-label="Note folder"></select>
+          <button type="button" id="editor-new-folder-btn" class="editor-new-folder-btn" title="Create new folder and move this note">+</button>
         </div>
         <div class="link-row">
           <input

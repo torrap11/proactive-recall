@@ -1,4 +1,6 @@
 :root {
+  --jot-traffic-light-inset-top: 28px;
+  --jot-traffic-light-inset-left: 72px;
   color-scheme: dark;
   /* SF Pro / system UI — same stack as Apple Notes */
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
@@ -59,9 +61,129 @@ body {
   gap: 8px;
 }
 
+.jot-mac-chrome .capture-shell,
+.jot-mac-chrome .search-shell {
+  padding-top: var(--jot-traffic-light-inset-top);
+}
+
+.jot-mac-chrome .capture-titlebar {
+  padding-left: var(--jot-traffic-light-inset-left);
+}
+
+.capture-titlebar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -2px -2px 0;
+  padding: 2px 2px 6px;
+  cursor: grab;
+}
+
+.capture-titlebar:active {
+  cursor: grabbing;
+}
+
+.capture-mode-tabs {
+  -webkit-app-region: no-drag;
+  display: flex;
+  gap: 4px;
+}
+
+.capture-mode-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--elevated);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.capture-mode-btn.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.capture-mode-btn[data-mode="reminder"].is-active {
+  color: var(--accent);
+}
+
+.capture-workflow-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.capture-workflow-status--hidden {
+  display: none;
+}
+
+.capture-workflow-status.is-error {
+  color: var(--danger-muted);
+}
+
+.capture-shell textarea,
+.capture-shell input,
+.capture-shell select,
+.capture-shell button,
+.capture-pending-images,
+.capture-attach-row {
+  -webkit-app-region: no-drag;
+}
+
 .capture-attach-row {
   display: flex;
   gap: 8px;
+}
+
+.capture-pending-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.capture-pending-images.hidden {
+  display: none;
+}
+
+.capture-pending-thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.capture-pending-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.capture-pending-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #capture-input {
@@ -134,6 +256,23 @@ body {
   align-items: stretch;
   gap: 8px;
   min-width: 0;
+}
+
+.jot-window-drag {
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+
+.jot-window-drag:active {
+  cursor: grabbing;
+}
+
+.jot-window-drag input,
+.jot-window-drag button,
+.jot-window-drag select,
+.jot-window-drag textarea,
+.jot-window-drag a {
+  -webkit-app-region: no-drag;
 }
 
 .cleanup-status {
@@ -323,6 +462,25 @@ button.folder-node:hover {
   font-size: 12px;
 }
 
+.editor-new-folder-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--elevated);
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.editor-new-folder-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 
 .bulk-actions {
   display: flex;
@@ -375,6 +533,23 @@ button.folder-node:hover {
 
 .result-row.list-focus.active {
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.result-row.dragging {
+  opacity: 0.45;
+}
+
+.result-row.drop-target {
+  background: var(--row-hover);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.result-row[draggable='true'] .result {
+  cursor: grab;
+}
+
+.result-row.dragging .result {
+  cursor: grabbing;
 }
 
 .result {

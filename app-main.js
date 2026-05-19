@@ -31,6 +31,8 @@ const { KNOWN_APPS, BUNDLE_ID_TO_NAME, resolveInputToBundleId } = require('./kno
 const { parseRemindWorkflowText } = require('./remindWorkflowParser');
 const aiOrganize = require('./aiOrganize');
 const noteCleanup = require('./noteCleanup');
+const { executeCaptureWorkflow } = require('./captureWorkflow');
+const { parseOverlayCommand, formatMinutesLabel } = require('./overlayCommand');
 
 const PRELOAD_MAIN = path.join(__dirname, 'preload.js');
 
@@ -40,6 +42,14 @@ let overlayWin = null;
 let lastSurfaceAt = 0;
 let lastSurfaceAppKey = '';
 let isImportingDb = false;
+/** While > 0, blur must not hide search/capture (native file/message dialogs). */
+let blurHideSuppressCount = 0;
+
+const CLICK_AWAY_HIDE_DELAY_MS = 120;
+/** Ignore blur-after-minimize races (traffic lights / dock). */
+const BLUR_HIDE_IGNORE_MS = 450;
+
+let appIsQuitting = false;
 
 const APP_CONFIG = {
   maxSurfacedNotes: 3,
@@ -286,21 +296,82 @@ function rendererWebPreferences() {
   };
 }
 
+/** macOS: frameless window with native traffic lights + draggable web content. */
+function macHiddenInsetChrome() {
+  if (process.platform !== 'darwin') return {};
+  return {
+    frame: false,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 14, y: 14 },
+  };
+}
+
+/** Close button hides utility windows instead of destroying them. */
+function wireUtilityWindowClose(win, hideFn) {
+  win.on('close', (event) => {
+    if (appIsQuitting) return;
+    event.preventDefault();
+    hideFn();
+  });
+}
+
+function isJotMainWindow(win) {
+  if (!win || win.isDestroyed()) return false;
+  return win === searchWin || win === captureWin;
+}
+
+function hideJotUiOnClickAway() {
+  if (blurHideSuppressCount > 0) return;
+  const focused = BrowserWindow.getFocusedWindow();
+  if (isJotMainWindow(focused)) return;
+  hideCaptureWindow();
+  hideSearchWindow();
+}
+
+function scheduleHideJotOnClickAway() {
+  setTimeout(hideJotUiOnClickAway, CLICK_AWAY_HIDE_DELAY_MS);
+}
+
+async function withBlurHideSuppressed(task) {
+  blurHideSuppressCount += 1;
+  try {
+    return await task();
+  } finally {
+    blurHideSuppressCount -= 1;
+  }
+}
+
+function attachClickAwayHide(win) {
+  let ignoreBlurUntil = 0;
+  win.on('minimize', () => {
+    ignoreBlurUntil = Date.now() + BLUR_HIDE_IGNORE_MS;
+  });
+  win.on('blur', () => {
+    if (Date.now() < ignoreBlurUntil) return;
+    scheduleHideJotOnClickAway();
+  });
+}
+
 function createCaptureWindow() {
   captureWin = new BrowserWindow({
     width: 560,
-    height: 190,
+    height: 248,
     show: false,
-    frame: false,
     transparent: false,
-    resizable: false,
+    resizable: true,
+    minimizable: true,
+    maximizable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
+    ...macHiddenInsetChrome(),
+    ...(process.platform !== 'darwin' ? { frame: false } : {}),
     webPreferences: rendererWebPreferences(),
   });
   captureWin.on('closed', () => {
     captureWin = null;
   });
+  wireUtilityWindowClose(captureWin, hideCaptureWindow);
+  attachClickAwayHide(captureWin);
   captureWin.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
 }
 
@@ -310,11 +381,16 @@ function createSearchWindow() {
     height: 640,
     show: false,
     title: 'Jot',
+    minimizable: true,
+    maximizable: true,
+    ...macHiddenInsetChrome(),
     webPreferences: rendererWebPreferences(),
   });
   searchWin.on('closed', () => {
     searchWin = null;
   });
+  wireUtilityWindowClose(searchWin, hideSearchWindow);
+  attachClickAwayHide(searchWin);
   searchWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -416,49 +492,14 @@ function centerWindowOnContextDisplay(win) {
   win.setPosition(x, y);
 }
 
-/**
- * Place capture just under (or above) the main Jot window so it stays on the same
- * Space / display as the user’s Jot session. Falls back to centerWindowOnContextDisplay
- * when search is missing (e.g. edge startup).
- */
-function positionCaptureNearSearchWindow() {
-  if (!captureWin || captureWin.isDestroyed()) return;
-  if (!searchWin || searchWin.isDestroyed()) {
-    centerWindowOnContextDisplay(captureWin);
-    return;
-  }
-  const sb = searchWin.getBounds();
-  if (sb.width < 32 || sb.height < 32) {
-    centerWindowOnContextDisplay(captureWin);
-    return;
-  }
-  const gap = 10;
-  const cb = captureWin.getBounds();
-  const cx = Math.round(sb.x + sb.width / 2);
-  const cy = Math.round(sb.y + sb.height / 2);
-  const display = screen.getDisplayNearestPoint({ x: cx, y: cy }) || screen.getPrimaryDisplay();
-  const area = display.workArea || display.bounds;
-
-  let x = Math.round(sb.x + (sb.width - cb.width) / 2);
-  let y = Math.round(sb.y + sb.height + gap);
-  if (y + cb.height > area.y + area.height) {
-    y = Math.round(sb.y - gap - cb.height);
-  }
-  if (y < area.y) {
-    y = Math.round(area.y + (area.height - cb.height) / 2);
-  }
-  x = Math.max(area.x, Math.min(x, area.x + area.width - cb.width));
-  y = Math.max(area.y, Math.min(y, area.y + area.height - cb.height));
-  captureWin.setPosition(x, y);
-}
-
 function showCaptureWindow() {
   if (!captureWin || captureWin.isDestroyed()) createCaptureWindow();
+  hideSearchWindow();
 
   const present = () => {
     if (!captureWin || captureWin.isDestroyed()) return;
+    centerWindowOnContextDisplay(captureWin);
     captureWin.show();
-    positionCaptureNearSearchWindow();
     captureWin.focus();
     captureWin.webContents.send('capture:focus');
   };
@@ -476,8 +517,10 @@ function showSearchWindow(payload = {}) {
 
   const present = () => {
     if (!searchWin || searchWin.isDestroyed()) return;
-    if (process.platform === 'darwin' && searchWin.isVisible()) {
+    hideCaptureWindow();
+    if (process.platform === 'darwin' && payload.toggle && searchWin.isVisible()) {
       searchWin.hide();
+      return;
     }
     centerWindowOnContextDisplay(searchWin);
     searchWin.show();
@@ -548,11 +591,13 @@ function finishOverlaySession() {
 }
 
 function registerShortcuts() {
-  globalShortcut.register('CommandOrControl+P', () => showSearchWindow());
+  globalShortcut.register('CommandOrControl+P', () => showSearchWindow({ toggle: true }));
+  globalShortcut.register('CommandOrControl+N', () => showCaptureWindow());
 }
 
 async function importExistingDbFromMenu() {
   if (isImportingDb) return;
+  return withBlurHideSuppressed(async () => {
   const parentWindow = searchWin || captureWin || null;
   const result = await dialog.showOpenDialog(parentWindow, {
     properties: ['openFile'],
@@ -598,6 +643,7 @@ async function importExistingDbFromMenu() {
     isImportingDb = false;
     startWatcher();
   }
+  });
 }
 
 /**
@@ -664,6 +710,7 @@ function formatCleanupSummary(res) {
 }
 
 async function cleanupNotesFromMenu() {
+  return withBlurHideSuppressed(async () => {
   const parentWindow = searchWin || captureWin || null;
   const confirm = await dialog.showMessageBox(parentWindow || undefined, {
     type: 'question',
@@ -691,9 +738,11 @@ async function cleanupNotesFromMenu() {
       message: error && error.message ? error.message : String(error),
     });
   }
+  });
 }
 
 async function dedupeNotesFromMenu() {
+  return withBlurHideSuppressed(async () => {
   const parentWindow = searchWin || captureWin || null;
   try {
     const result = db.deduplicateNotesByTextAndCreatedAt();
@@ -719,9 +768,11 @@ async function dedupeNotesFromMenu() {
       message: error && error.message ? error.message : String(error),
     });
   }
+  });
 }
 
 async function exportDbFromMenu() {
+  return withBlurHideSuppressed(async () => {
   const parentWindow = searchWin || captureWin || null;
   const stamp = new Date().toISOString().slice(0, 10);
   const result = await dialog.showSaveDialog(parentWindow, {
@@ -751,10 +802,12 @@ async function exportDbFromMenu() {
       detail: error && error.message ? error.message : String(error),
     });
   }
+  });
 }
 
 async function maybeShowFirstLaunchChoice() {
   if (!db.consumeWasPackagedFirstLaunch()) return false;
+  return withBlurHideSuppressed(async () => {
   const parentWindow = searchWin || captureWin || null;
   const result = await dialog.showMessageBox(parentWindow, {
     type: 'question',
@@ -769,12 +822,14 @@ async function maybeShowFirstLaunchChoice() {
     await importExistingDbFromMenu();
   }
   return true;
+  });
 }
 
 async function maybePromptFirstLaunchApiKeySetup(hadFirstLaunchOnboarding) {
   if (!hadFirstLaunchOnboarding || !app.isPackaged) return;
   const { apiKey } = aiOrganize.readAnthropicCredentials(app.getPath('userData'));
   if (apiKey) return;
+  return withBlurHideSuppressed(async () => {
   const parentWindow = searchWin || captureWin || null;
   const result = await dialog.showMessageBox(parentWindow, {
     type: 'question',
@@ -790,6 +845,7 @@ async function maybePromptFirstLaunchApiKeySetup(hadFirstLaunchOnboarding) {
   if (searchWin && !searchWin.isDestroyed()) {
     searchWin.webContents.send('ai:key:open-modal');
   }
+  });
 }
 
 function buildAppMenu() {
@@ -941,9 +997,25 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('capture:run-workflow', async (_event, rawText) => {
+    try {
+      const result = await executeCaptureWorkflow(db, rawText, app.getPath('userData'));
+      if (result.ok) notifySearchNotesChanged();
+      return result;
+    } catch (e) {
+      return { error: e.message || String(e) };
+    }
+  });
+
   ipcMain.handle('capture:save', (_event, text, appKey) => {
     const note = db.createNote(text);
     if (note && appKey) db.linkNoteToApp(note.id, appKey);
+    if (note) notifySearchNotesChanged();
+    return note;
+  });
+  ipcMain.handle('notes:create', (_event, text) => {
+    const trimmed = String(text || '').trim();
+    const note = trimmed ? db.createNote(trimmed) : db.createDraftNote();
     if (note) notifySearchNotesChanged();
     return note;
   });
@@ -1004,6 +1076,11 @@ function registerIpc() {
     if (folder) notifySearchNotesChanged();
     return folder;
   });
+  ipcMain.handle('folders:group-notes', (_event, noteIds, folderName) => {
+    const result = db.groupNotesIntoNewFolder(noteIds, folderName);
+    if (result) notifySearchNotesChanged();
+    return result;
+  });
   ipcMain.handle('folders:rename', (_event, folderId, name) => {
     const folder = db.renameFolder(folderId, name);
     if (folder) notifySearchNotesChanged();
@@ -1020,6 +1097,11 @@ function registerIpc() {
     return true;
   });
   ipcMain.handle('clipboard:read', () => clipboard.readText());
+  ipcMain.handle('clipboard:read-image', () => {
+    const img = clipboard.readImage();
+    if (img.isEmpty()) return null;
+    return img.toDataURL();
+  });
   ipcMain.handle('note-images:list', (_event, noteId) => {
     const rows = db.listNoteImages(noteId);
     return rows.map((row) => toImagePayload(row));
@@ -1034,7 +1116,8 @@ function registerIpc() {
     notifySearchNotesChanged();
     return toImagePayload(row);
   });
-  ipcMain.handle('note-images:add-from-picker', async (event, noteId) => {
+  ipcMain.handle('note-images:add-from-picker', async (event, noteId) =>
+    withBlurHideSuppressed(async () => {
     const note = db.getNote(noteId);
     if (!note) return [];
     const parentWindow = BrowserWindow.fromWebContents(event.sender) || searchWin || null;
@@ -1056,7 +1139,7 @@ function registerIpc() {
     }
     if (created.length > 0) notifySearchNotesChanged();
     return created;
-  });
+  }));
   ipcMain.handle('note-images:remove', async (_event, noteId, imageId) => {
     const removed = db.removeNoteImage(noteId, imageId);
     if (!removed) return false;
@@ -1067,7 +1150,8 @@ function registerIpc() {
 
   ipcMain.handle('note-files:list', (_event, noteId) => db.listNoteFiles(noteId).map(toFilePayload));
 
-  ipcMain.handle('note-files:add-from-picker', async (event, noteId) => {
+  ipcMain.handle('note-files:add-from-picker', async (event, noteId) =>
+    withBlurHideSuppressed(async () => {
     const note = db.getNote(noteId);
     if (!note) return [];
     const parentWindow = BrowserWindow.fromWebContents(event.sender) || searchWin || null;
@@ -1087,7 +1171,7 @@ function registerIpc() {
 
     if (created.length > 0) notifySearchNotesChanged();
     return created;
-  });
+  }));
 
   ipcMain.handle('note-files:add-from-data-url', async (_event, noteId, dataUrl, fileName, fileExt) => {
     const note = db.getNote(noteId);
@@ -1174,6 +1258,12 @@ function registerIpc() {
 
   ipcMain.on('window:hide-capture', hideCaptureWindow);
   ipcMain.on('window:hide-search', hideSearchWindow);
+  ipcMain.on('window:minimize-capture', () => {
+    if (captureWin && !captureWin.isDestroyed()) captureWin.minimize();
+  });
+  ipcMain.on('window:minimize-search', () => {
+    if (searchWin && !searchWin.isDestroyed()) searchWin.minimize();
+  });
   ipcMain.on('window:show-search', (_event, payload) => showSearchWindow(payload || {}));
   ipcMain.on('window:show-capture', showCaptureWindow);
 
@@ -1203,6 +1293,72 @@ function registerIpc() {
   });
   ipcMain.on('overlay-dismiss-all', () => {
     finishOverlaySession();
+  });
+
+  ipcMain.handle('overlay:run-command', (_event, payload) => {
+    const appKey = String((payload && payload.appKey) || lastSurfaceAppKey || '').trim();
+    const noteIds = (Array.isArray(payload && payload.noteIds) ? payload.noteIds : [])
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const focusNoteId = Number(payload && payload.focusNoteId);
+    const parsed = parseOverlayCommand(payload && payload.command);
+    if (parsed.error) return parsed;
+
+    if (parsed.op === 'snoozeAll') {
+      if (!appKey) return { error: 'Missing app context.' };
+      if (noteIds.length === 0) return { error: 'No reminders to snooze.' };
+      for (const id of noteIds) {
+        db.recordSurfaceEvent(id, appKey, 'snoozed');
+        db.snoozeNote(id, appKey, parsed.minutes);
+        sendOverlayRemoveCard(id);
+      }
+      return {
+        ok: true,
+        message: `Snoozed ${noteIds.length} reminder(s) for ${formatMinutesLabel(parsed.minutes)}.`,
+      };
+    }
+
+    if (parsed.op === 'snoozeOne') {
+      if (!appKey) return { error: 'Missing app context.' };
+      const id =
+        Number.isFinite(focusNoteId) && noteIds.includes(focusNoteId) ? focusNoteId : noteIds[0];
+      if (!id) return { error: 'No reminder selected.' };
+      db.recordSurfaceEvent(id, appKey, 'snoozed');
+      db.snoozeNote(id, appKey, parsed.minutes);
+      sendOverlayRemoveCard(id);
+      return {
+        ok: true,
+        message: `Snoozed for ${formatMinutesLabel(parsed.minutes)}.`,
+      };
+    }
+
+    if (parsed.op === 'completeAll') {
+      for (const id of noteIds) {
+        db.recordSurfaceEvent(id, lastSurfaceAppKey, 'completed');
+        db.completeNote(id);
+        sendOverlayRemoveCard(id);
+      }
+      if (noteIds.length > 0) notifySearchNotesChanged();
+      return { ok: true, message: `Marked ${noteIds.length} reminder(s) done.` };
+    }
+
+    if (parsed.op === 'completeOne') {
+      const id =
+        Number.isFinite(focusNoteId) && noteIds.includes(focusNoteId) ? focusNoteId : noteIds[0];
+      if (!id) return { error: 'No reminder selected.' };
+      db.recordSurfaceEvent(id, lastSurfaceAppKey, 'completed');
+      db.completeNote(id);
+      notifySearchNotesChanged();
+      sendOverlayRemoveCard(id);
+      return { ok: true, message: 'Marked done.' };
+    }
+
+    if (parsed.op === 'dismissAll') {
+      finishOverlaySession();
+      return { ok: true, message: 'Dismissed.', dismissAll: true };
+    }
+
+    return { error: 'Unknown command.' };
   });
 }
 
@@ -1242,13 +1398,16 @@ app.whenReady().then(async () => {
   console.log('[app] DB path:', db.getDbPath());
 
   createSearchWindow();
-  createCaptureWindow();
   buildAppMenu();
   registerShortcuts();
   registerIpc();
   startWatcher();
   const hadFirstLaunchOnboarding = await maybeShowFirstLaunchChoice();
   await maybePromptFirstLaunchApiKeySetup(hadFirstLaunchOnboarding);
+});
+
+app.on('before-quit', () => {
+  appIsQuitting = true;
 });
 
 app.on('will-quit', () => {
@@ -1258,7 +1417,6 @@ app.on('will-quit', () => {
 
 app.on('activate', () => {
   if (!searchWin || searchWin.isDestroyed()) createSearchWindow();
-  if (!captureWin || captureWin.isDestroyed()) createCaptureWindow();
 });
 
 app.on('window-all-closed', () => {

@@ -503,6 +503,14 @@ function createNote(text) {
   return getNote(result.lastInsertRowid);
 }
 
+/** Empty note for in-app compose (⌘N); user fills text in the editor. */
+function createDraftNote() {
+  const result = getDb()
+    .prepare("INSERT INTO notes (text, created_at, updated_at) VALUES ('', datetime('now'), datetime('now'))")
+    .run();
+  return getNote(result.lastInsertRowid);
+}
+
 function updateNote(id, text) {
   const value = normalizeText(text);
   if (!value) return null;
@@ -787,6 +795,48 @@ function createFolder(name) {
   if (!value) return null;
   const result = getDb().prepare('INSERT INTO folders (name, created_at) VALUES (?, datetime(\'now\'))').run(value);
   return getDb().prepare('SELECT id, name, created_at FROM folders WHERE id = ?').get(result.lastInsertRowid);
+}
+
+/**
+ * Creates a folder and moves the given notes into it (atomic).
+ * @param {Array<string|number>} noteIds — at least two distinct note ids
+ * @param {string} folderName
+ * @returns {{ folder: { id: number, name: string, created_at: string }, noteIds: number[] } | null}
+ */
+function groupNotesIntoNewFolder(noteIds, folderName) {
+  const ids = [
+    ...new Set(
+      noteIds.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n >= 1)
+    ),
+  ];
+  if (ids.length < 2) return null;
+
+  const value = normalizeText(folderName);
+  if (!value) return null;
+
+  for (const id of ids) {
+    if (!getNote(id)) return null;
+  }
+
+  try {
+    const folder = getDb().transaction(() => {
+      const result = getDb()
+        .prepare("INSERT INTO folders (name, created_at) VALUES (?, datetime('now'))")
+        .run(value);
+      const folderId = result.lastInsertRowid;
+      for (const id of ids) {
+        const updated = setNoteFolder(id, folderId);
+        if (!updated) throw new Error('setNoteFolder failed');
+      }
+      return getDb().prepare('SELECT id, name, created_at FROM folders WHERE id = ?').get(folderId);
+    })();
+    return { folder, noteIds: ids };
+  } catch (e) {
+    if (/unique|constraint|SQLITE_CONSTRAINT/i.test(String(e && e.message ? e.message : e))) {
+      return null;
+    }
+    throw e;
+  }
 }
 
 /**
@@ -1293,6 +1343,7 @@ module.exports = {
   importDbFromFile,
   exportDbToFile,
   createNote,
+  createDraftNote,
   updateNote,
   deleteNote,
   deleteNotes,
@@ -1307,6 +1358,7 @@ module.exports = {
   pruneEmptyFolders,
   getFolderDiagram,
   createFolder,
+  groupNotesIntoNewFolder,
   renameFolder,
   deleteFolder,
   setNoteFolder,

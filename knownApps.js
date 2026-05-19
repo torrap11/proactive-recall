@@ -22,6 +22,11 @@ const KNOWN_APPS = [
     bundleId: 'com.microsoft.VSCode',
     aliases: ['code', 'vscode', 'vsc', 'vs code', 'visual studio code', 'debug', 'repo'],
   },
+  {
+    name: 'Cursor',
+    bundleId: 'com.todesktop.230313mzl4w4u92',
+    aliases: ['cursor', 'ide'],
+  },
 ];
 
 const BUNDLE_ID_TO_NAME = Object.fromEntries(KNOWN_APPS.map((a) => [a.bundleId, a.name]));

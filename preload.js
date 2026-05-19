@@ -4,8 +4,15 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+if (process.platform === 'darwin') {
+  window.addEventListener('DOMContentLoaded', () => {
+    document.body?.classList.add('jot-mac-chrome');
+  });
+}
+
 contextBridge.exposeInMainWorld('mvp', {
   saveCapture: (text, appKey) => ipcRenderer.invoke('capture:save', text, appKey),
+  createNote: (text) => ipcRenderer.invoke('notes:create', text),
   queryNotes: (query, folderId) => ipcRenderer.invoke('search:query', query, folderId),
   recentNotes: (folderId) => ipcRenderer.invoke('notes:recent', folderId),
   getNote: (noteId) => ipcRenderer.invoke('note:get', noteId),
@@ -29,6 +36,8 @@ contextBridge.exposeInMainWorld('mvp', {
   listFolders: () => ipcRenderer.invoke('folders:list'),
   getFolderDiagram: () => ipcRenderer.invoke('folders:diagram'),
   createFolder: (name) => ipcRenderer.invoke('folders:create', name),
+  groupNotesIntoFolder: (noteIds, folderName) =>
+    ipcRenderer.invoke('folders:group-notes', noteIds, folderName),
   renameFolder: (folderId, name) => ipcRenderer.invoke('folders:rename', folderId, name),
   deleteFolder: (folderId) => ipcRenderer.invoke('folders:delete', folderId),
   listApps: () => ipcRenderer.invoke('apps:list'),
@@ -36,10 +45,14 @@ contextBridge.exposeInMainWorld('mvp', {
   exportDbFromPicker: () => ipcRenderer.invoke('db:export-from-picker'),
   resolveAppKey: (raw) => ipcRenderer.invoke('apps:resolve', raw),
   parseRemindWorkflow: (text) => ipcRenderer.invoke('capture:parse-remind-workflow', text),
+  runCaptureWorkflow: (text) => ipcRenderer.invoke('capture:run-workflow', text),
   copyText: (text) => ipcRenderer.invoke('clipboard:copy', text),
   readClipboardText: () => ipcRenderer.invoke('clipboard:read'),
+  readClipboardImage: () => ipcRenderer.invoke('clipboard:read-image'),
   hideCapture: () => ipcRenderer.send('window:hide-capture'),
   hideSearch: () => ipcRenderer.send('window:hide-search'),
+  minimizeCapture: () => ipcRenderer.send('window:minimize-capture'),
+  minimizeSearch: () => ipcRenderer.send('window:minimize-search'),
   openSearch: (payload) => ipcRenderer.send('window:show-search', payload),
   openCapture: () => ipcRenderer.send('window:show-capture'),
   onCaptureFocus: (cb) => ipcRenderer.on('capture:focus', () => cb()),

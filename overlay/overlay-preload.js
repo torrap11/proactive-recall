@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('overlay', {
   disable: (noteId, appKey) => ipcRenderer.send('overlay-disable', noteId, appKey),
   openNote: (noteId) => ipcRenderer.send('overlay-open-note', noteId),
   dismissAll: () => ipcRenderer.send('overlay-dismiss-all'),
+  runCommand: (payload) => ipcRenderer.invoke('overlay:run-command', payload),
 });

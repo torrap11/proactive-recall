@@ -33,11 +33,24 @@ const newFolderModalHintEl = document.getElementById('new-folder-modal-hint');
 
 const FOLDER_DIALOG_HINT_CREATE =
   'Choose a short name. You can move notes into this folder from the note editor.';
+const FOLDER_DIALOG_HINT_EDITOR_CREATE =
+  'Name the folder. This note will be moved into it when you create it.';
+const EDITOR_NEW_FOLDER_VALUE = '__new_folder__';
 const FOLDER_DIALOG_HINT_RENAME =
   'Notes stay in this folder. Only the label in the diagram and editor changes.';
+const FOLDER_DIALOG_HINT_GROUP =
+  'Both notes will move into this folder. You can rename it anytime from the folder tree.';
 
 /** When non-null, the folder name dialog is renaming this folder id instead of creating. */
 let folderNameDialogRenameTargetId = null;
+/** When non-null, create dialog groups these note ids into a new folder on submit. */
+let folderNameDialogGroupNoteIds = null;
+/** When true, plain create moves the open note into the new folder. */
+let folderNameDialogAssignActiveNote = false;
+/** Note id being dragged in the results list (for drop onto another note). */
+let dragNoteId = null;
+/** Suppress row click right after a drag so dropping does not open a note. */
+let suppressNoteRowClick = false;
 const bulkActionsEl = document.getElementById('bulk-actions');
 const selectedCountEl = document.getElementById('selected-count');
 const deleteSelectedBtn = document.getElementById('delete-selected-btn');
@@ -50,6 +63,7 @@ const copyBtn = document.getElementById('copy-note-btn');
 const attachImageBtn = document.getElementById('attach-image-btn');
 const attachFileBtn = document.getElementById('attach-file-btn');
 const editorFolderSelect = document.getElementById('editor-folder-select');
+const editorNewFolderBtn = document.getElementById('editor-new-folder-btn');
 const appSelect = document.getElementById('app-select');
 const linkBtn = document.getElementById('link-btn');
 const linksEl = document.getElementById('links');
@@ -267,12 +281,37 @@ function folderLabel(folderId) {
 }
 
 function renderFolderControls() {
+  const currentValue = editorFolderSelect?.value || 'unfiled';
   const editorOptions = ['<option value="unfiled">Unfiled</option>'];
   for (const folder of state.folders) {
     const safeName = escapeHtml(folder.name);
     editorOptions.push(`<option value="${folder.id}">${safeName}</option>`);
   }
+  editorOptions.push(
+    `<option value="${EDITOR_NEW_FOLDER_VALUE}">+ New folder…</option>`
+  );
   editorFolderSelect.innerHTML = editorOptions.join('');
+  if (currentValue === EDITOR_NEW_FOLDER_VALUE) return;
+  const hasOption = [...editorFolderSelect.options].some((o) => o.value === currentValue);
+  if (hasOption) editorFolderSelect.value = currentValue;
+}
+
+function editorFolderValueForNote(note) {
+  return note && note.folder_id != null ? String(note.folder_id) : 'unfiled';
+}
+
+function restoreEditorFolderSelectFromActiveNote() {
+  if (!state.activeId) {
+    editorFolderSelect.value = 'unfiled';
+    return;
+  }
+  const note = state.notes.find((n) => n.id === state.activeId);
+  editorFolderSelect.value = editorFolderValueForNote(note);
+}
+
+function showNewFolderModalFromEditor() {
+  if (!state.activeId) return;
+  showNewFolderModal({ assignActiveNote: true });
 }
 
 function labelForAppKey(bundleId) {
@@ -419,16 +458,68 @@ folderDiagramTreeEl?.addEventListener(
   true
 );
 
-function showNewFolderModal() {
+function noteSnippetForFolderName(text) {
+  const line = String(text || '')
+    .split('\n')[0]
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!line || line === '(attachment)') return '';
+  return line.slice(0, 36);
+}
+
+function suggestFolderNameFromNotes(noteA, noteB) {
+  const a = noteSnippetForFolderName(noteA.text);
+  const b = noteSnippetForFolderName(noteB.text);
+  if (a && b) return a === b ? a : `${a} & ${b}`.slice(0, 80);
+  if (a) return a;
+  if (b) return b;
+  return 'New folder';
+}
+
+function showNewFolderModal(opts = {}) {
   if (!newFolderModal || !newFolderNameInput) return;
   folderNameDialogRenameTargetId = null;
+  folderNameDialogGroupNoteIds = null;
+  folderNameDialogAssignActiveNote = Boolean(opts.assignActiveNote);
   if (newFolderModalTitleEl) newFolderModalTitleEl.textContent = 'New folder';
-  if (newFolderModalHintEl) newFolderModalHintEl.textContent = FOLDER_DIALOG_HINT_CREATE;
+  if (newFolderModalHintEl) {
+    newFolderModalHintEl.textContent = folderNameDialogAssignActiveNote
+      ? FOLDER_DIALOG_HINT_EDITOR_CREATE
+      : FOLDER_DIALOG_HINT_CREATE;
+  }
   if (newFolderCreateBtn) newFolderCreateBtn.textContent = 'Create';
   newFolderNameInput.placeholder = 'e.g. Work';
   newFolderErrorEl?.classList.add('hidden');
   if (newFolderErrorEl) newFolderErrorEl.textContent = '';
   newFolderNameInput.value = '';
+  newFolderModal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    newFolderNameInput.focus();
+    newFolderNameInput.select();
+  });
+}
+
+function showGroupNotesFolderModal(sourceId, targetId) {
+  if (!newFolderModal || !newFolderNameInput) return;
+  const source = state.notes.find((n) => n.id === sourceId);
+  const target = state.notes.find((n) => n.id === targetId);
+  if (!source || !target) return;
+  if (
+    source.folder_id != null &&
+    source.folder_id === target.folder_id
+  ) {
+    return;
+  }
+  folderNameDialogRenameTargetId = null;
+  folderNameDialogAssignActiveNote = false;
+  folderNameDialogGroupNoteIds = [sourceId, targetId];
+  if (newFolderModalTitleEl) newFolderModalTitleEl.textContent = 'Folder from notes';
+  if (newFolderModalHintEl) newFolderModalHintEl.textContent = FOLDER_DIALOG_HINT_GROUP;
+  if (newFolderCreateBtn) newFolderCreateBtn.textContent = 'Create';
+  newFolderNameInput.placeholder = 'e.g. App ideas';
+  newFolderErrorEl?.classList.add('hidden');
+  if (newFolderErrorEl) newFolderErrorEl.textContent = '';
+  newFolderNameInput.value = suggestFolderNameFromNotes(source, target);
   newFolderModal.classList.remove('hidden');
   requestAnimationFrame(() => {
     newFolderNameInput.focus();
@@ -443,6 +534,8 @@ function showRenameFolderModal(folderIdRaw) {
   const folder = state.folders.find((f) => Number(f.id) === id);
   if (!folder) return;
   folderNameDialogRenameTargetId = id;
+  folderNameDialogGroupNoteIds = null;
+  folderNameDialogAssignActiveNote = false;
   if (newFolderModalTitleEl) newFolderModalTitleEl.textContent = 'Rename folder';
   if (newFolderModalHintEl) newFolderModalHintEl.textContent = FOLDER_DIALOG_HINT_RENAME;
   if (newFolderCreateBtn) newFolderCreateBtn.textContent = 'Save';
@@ -459,6 +552,8 @@ function showRenameFolderModal(folderIdRaw) {
 
 function hideNewFolderModal() {
   folderNameDialogRenameTargetId = null;
+  folderNameDialogGroupNoteIds = null;
+  folderNameDialogAssignActiveNote = false;
   newFolderModal?.classList.add('hidden');
 }
 
@@ -474,6 +569,7 @@ async function submitFolderNameDialog() {
   }
   if (newFolderCreateBtn) newFolderCreateBtn.disabled = true;
   const isRename = folderNameDialogRenameTargetId != null;
+  const groupNoteIds = folderNameDialogGroupNoteIds;
   try {
     if (isRename) {
       const folder = await window.mvp.renameFolder(folderNameDialogRenameTargetId, trimmed);
@@ -484,6 +580,19 @@ async function submitFolderNameDialog() {
         }
         return;
       }
+    } else if (groupNoteIds) {
+      const result = await window.mvp.groupNotesIntoFolder(groupNoteIds, trimmed);
+      if (!result || !result.folder) {
+        const duplicate = state.folders.some((f) => f.name === trimmed);
+        if (newFolderErrorEl) {
+          newFolderErrorEl.textContent = duplicate
+            ? 'A folder with that name already exists.'
+            : 'Could not create that folder.';
+          newFolderErrorEl.classList.remove('hidden');
+        }
+        return;
+      }
+      state.folderFilter = String(result.folder.id);
     } else {
       const folder = await window.mvp.createFolder(trimmed);
       if (!folder) {
@@ -493,13 +602,24 @@ async function submitFolderNameDialog() {
         }
         return;
       }
+      if (folderNameDialogAssignActiveNote && state.activeId) {
+        const updated = await window.mvp.setNoteFolder(state.activeId, String(folder.id));
+        if (!updated) {
+          if (newFolderErrorEl) {
+            newFolderErrorEl.textContent = 'Folder created but could not move this note.';
+            newFolderErrorEl.classList.remove('hidden');
+          }
+          await loadFolders();
+          return;
+        }
+      }
     }
     hideNewFolderModal();
     await loadFolders();
     if (state.activeId) {
       const note = await window.mvp.getNote(state.activeId);
       if (note) {
-        editorFolderSelect.value = note.folder_id == null ? 'unfiled' : String(note.folder_id);
+        editorFolderSelect.value = editorFolderValueForNote(note);
       }
     }
     await runQuery(queryInput.value.trim());
@@ -579,7 +699,7 @@ function renderResults() {
       const listFocus = note.id === state.listFocusId ? ' list-focus' : '';
       const selected = state.selectedIds.has(note.id) ? ' checked' : '';
       const tab = note.id === state.listFocusId ? '0' : '-1';
-      return `<div class="result-row${active}${listFocus}" data-id="${note.id}">
+      return `<div class="result-row${active}${listFocus}" data-id="${note.id}" draggable="true" title="Drag onto another note to group into a folder">
         <label class="result-select" title="Select note">
           <input type="checkbox" class="result-checkbox" data-id="${note.id}"${selected} />
         </label>
@@ -595,6 +715,13 @@ function renderResults() {
       </div>`;
     })
     .join('');
+}
+
+async function startComposeNote() {
+  const note = await window.mvp.createNote('');
+  if (!note?.id) return;
+  await runQuery(queryInput.value.trim());
+  await openNote(note.id);
 }
 
 async function openNote(noteId) {
@@ -840,7 +967,71 @@ resultsEl.addEventListener('change', (event) => {
   updateBulkActionsUi();
 });
 
+function clearNoteDragUi() {
+  dragNoteId = null;
+  resultsEl.querySelectorAll('.result-row.dragging, .result-row.drop-target').forEach((el) => {
+    el.classList.remove('dragging', 'drop-target');
+  });
+}
+
+resultsEl.addEventListener('dragstart', (event) => {
+  if (event.target.closest('.result-select, .result-delete')) {
+    event.preventDefault();
+    return;
+  }
+  const row = event.target.closest('.result-row');
+  if (!row) return;
+  const id = Number(row.dataset.id);
+  if (!Number.isFinite(id)) return;
+  dragNoteId = id;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', String(id));
+  row.classList.add('dragging');
+});
+
+resultsEl.addEventListener('dragend', () => {
+  clearNoteDragUi();
+  suppressNoteRowClick = true;
+  requestAnimationFrame(() => {
+    suppressNoteRowClick = false;
+  });
+});
+
+resultsEl.addEventListener('dragover', (event) => {
+  const row = event.target.closest('.result-row');
+  if (!row || dragNoteId == null) return;
+  const targetId = Number(row.dataset.id);
+  if (targetId === dragNoteId) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  resultsEl.querySelectorAll('.result-row.drop-target').forEach((el) => {
+    if (el !== row) el.classList.remove('drop-target');
+  });
+  row.classList.add('drop-target');
+});
+
+resultsEl.addEventListener('dragleave', (event) => {
+  const row = event.target.closest('.result-row');
+  if (!row) return;
+  const related = event.relatedTarget;
+  if (related && row.contains(related)) return;
+  row.classList.remove('drop-target');
+});
+
+resultsEl.addEventListener('drop', (event) => {
+  event.preventDefault();
+  const row = event.target.closest('.result-row');
+  if (!row || dragNoteId == null) return;
+  const targetId = Number(row.dataset.id);
+  row.classList.remove('drop-target');
+  const sourceId = dragNoteId;
+  clearNoteDragUi();
+  if (targetId === sourceId) return;
+  showGroupNotesFolderModal(sourceId, targetId);
+});
+
 resultsEl.addEventListener('click', (event) => {
+  if (suppressNoteRowClick) return;
   const del = event.target.closest('.result-delete');
   if (del) {
     event.stopPropagation();
@@ -978,9 +1169,21 @@ appSelect.addEventListener('keydown', (event) => {
 editorFolderSelect.addEventListener('change', async () => {
   if (!state.activeId) return;
   const nextFolder = editorFolderSelect.value || 'unfiled';
+  if (nextFolder === EDITOR_NEW_FOLDER_VALUE) {
+    restoreEditorFolderSelectFromActiveNote();
+    showNewFolderModalFromEditor();
+    return;
+  }
   const updated = await window.mvp.setNoteFolder(state.activeId, nextFolder);
-  if (!updated) return;
+  if (!updated) {
+    restoreEditorFolderSelectFromActiveNote();
+    return;
+  }
   await runQuery(queryInput.value.trim());
+});
+
+editorNewFolderBtn?.addEventListener('click', () => {
+  showNewFolderModalFromEditor();
 });
 
 editorTextEl.addEventListener('paste', async (event) => {
@@ -1197,7 +1400,7 @@ document.addEventListener('keydown', (event) => {
 
   if (event.metaKey && !event.shiftKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'n') {
     event.preventDefault();
-    window.mvp.openCapture();
+    void startComposeNote();
     return;
   }
 
@@ -1245,6 +1448,9 @@ document.addEventListener('keydown', (event) => {
       closeEditor();
       return;
     }
+    event.preventDefault();
+    window.mvp.hideSearch();
+    return;
   }
 });
 
@@ -1288,6 +1494,10 @@ anthropicKeyLink?.addEventListener('click', (event) => {
 
 window.mvp.onSearchFocus(async (payload) => {
   await runQuery(queryInput.value.trim());
+  if (payload && payload.compose) {
+    await startComposeNote();
+    return;
+  }
   queryInput.focus();
   queryInput.select();
   if (payload && payload.openNoteId) await openNote(Number(payload.openNoteId));
